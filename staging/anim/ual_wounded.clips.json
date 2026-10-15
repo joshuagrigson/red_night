@@ -1,0 +1,51 @@
+[
+ {
+  "name": "Crawl_Enter",
+  "from": "UAL1:Crawl_Enter",
+  "mirror": false,
+  "dur": 2.133,
+  "frames": 66
+ },
+ {
+  "name": "Crawl_Idle_Loop",
+  "from": "UAL1:Crawl_Idle_Loop",
+  "mirror": false,
+  "dur": 2.333,
+  "frames": 71
+ },
+ {
+  "name": "Crawl_Fwd_Loop",
+  "from": "UAL1:Crawl_Fwd_Loop",
+  "mirror": false,
+  "dur": 2.167,
+  "frames": 67
+ },
+ {
+  "name": "Crawl_Bwd_Loop",
+  "from": "UAL1:Crawl_Bwd_Loop",
+  "mirror": false,
+  "dur": 2.5,
+  "frames": 76
+ },
+ {
+  "name": "Crawl_Left_Loop",
+  "from": "UAL1:Crawl_Left_Loop",
+  "mirror": false,
+  "dur": 1.267,
+  "frames": 39
+ },
+ {
+  "name": "Crawl_Right_Loop",
+  "from": "UAL1:Crawl_Right_Loop",
+  "mirror": false,
+  "dur": 1.267,
+  "frames": 39
+ },
+ {
+  "name": "Crawl_Exit",
+  "from": "UAL1:Crawl_Exit",
+  "mirror": false,
+  "dur": 2,
+  "frames": 61
+ }
+]

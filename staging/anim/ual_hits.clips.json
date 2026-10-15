@@ -1,0 +1,128 @@
+[
+ {
+  "name": "Hit_Chest",
+  "from": "UAL1:Hit_Chest",
+  "mirror": false,
+  "dur": 0.333,
+  "frames": 12
+ },
+ {
+  "name": "Hit_Chest_M",
+  "from": "UAL1:Hit_Chest",
+  "mirror": true,
+  "dur": 0.333,
+  "frames": 12
+ },
+ {
+  "name": "Hit_Head",
+  "from": "UAL1:Hit_Head",
+  "mirror": false,
+  "dur": 0.433,
+  "frames": 15
+ },
+ {
+  "name": "Hit_Head_M",
+  "from": "UAL1:Hit_Head",
+  "mirror": true,
+  "dur": 0.433,
+  "frames": 15
+ },
+ {
+  "name": "Hit_Shoulder_L",
+  "from": "UAL1:Hit_Shoulder_L",
+  "mirror": false,
+  "dur": 0.533,
+  "frames": 18
+ },
+ {
+  "name": "Hit_Shoulder_R",
+  "from": "UAL1:Hit_Shoulder_R",
+  "mirror": false,
+  "dur": 0.5,
+  "frames": 16
+ },
+ {
+  "name": "Hit_Stomach",
+  "from": "UAL1:Hit_Stomach",
+  "mirror": false,
+  "dur": 0.667,
+  "frames": 22
+ },
+ {
+  "name": "Hit_Stomach_M",
+  "from": "UAL1:Hit_Stomach",
+  "mirror": true,
+  "dur": 0.667,
+  "frames": 22
+ },
+ {
+  "name": "Stagger_Back",
+  "from": "UAL2:Idle_Shield_Break",
+  "mirror": false,
+  "dur": 1.067,
+  "frames": 34
+ },
+ {
+  "name": "Hit_Knockback",
+  "from": "UAL2:Hit_Knockback",
+  "mirror": false,
+  "dur": 0.833,
+  "frames": 26
+ },
+ {
+  "name": "GetUp_Back",
+  "from": "UAL2:LayToIdle",
+  "mirror": false,
+  "dur": 1.533,
+  "frames": 47
+ },
+ {
+  "name": "Death01",
+  "from": "UAL1:Death01",
+  "mirror": false,
+  "dur": 2.4,
+  "frames": 74
+ },
+ {
+  "name": "Death01_M",
+  "from": "UAL1:Death01",
+  "mirror": true,
+  "dur": 2.4,
+  "frames": 74
+ },
+ {
+  "name": "Death02",
+  "from": "UAL1:Death02",
+  "mirror": false,
+  "dur": 2.467,
+  "frames": 76
+ },
+ {
+  "name": "Death02_M",
+  "from": "UAL1:Death02",
+  "mirror": true,
+  "dur": 2.467,
+  "frames": 76
+ },
+ {
+  "name": "Limp_R_Loop",
+  "from": "UAL2:Zombie_Walk_Fwd_Loop",
+  "mirror": false,
+  "dur": 1.333,
+  "frames": 42
+ },
+ {
+  "name": "Limp_L_Loop",
+  "from": "UAL2:Zombie_Walk_Fwd_Loop",
+  "mirror": true,
+  "dur": 1.333,
+  "frames": 42
+ },
+ {
+  "name": "Idle_Tired_Loop",
+  "from": "UAL1:Idle_Tired_Loop",
+  "mirror": false,
+  "dur": 2.3,
+  "frames": 70
+ }
+]

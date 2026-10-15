@@ -1,0 +1,18 @@
+All files in this folder are CC0 1.0 (public domain dedication).
+Sources (see manifest.json for the per-file mapping):
+ - EZduzziteh, "Squish Sounds Effects" https://opengameart.org/content/squish-sounds-effects
+ - Independent.nu via qubodup, "8 wet squish, slurp impacts" https://opengameart.org/content/8-wet-squish-slurp-impacts
+ - Kenney, "Impact Sounds" https://kenney.nl/assets/impact-sounds
+ - Kenney, "Interface Sounds" https://kenney.nl/assets/interface-sounds
+ - Kenney, "RPG Audio" https://kenney.nl/assets/rpg-audio
+ - Kenney, "UI Audio" https://kenney.nl/assets/ui-audio
+ - Nocturnal_Vanguard, "Female Hurt Grunts & Groans" https://opengameart.org/content/female-hurt-grunts-groans
+ - Red Night combat research
+ - bart, "Heartbeat sounds" https://opengameart.org/content/heartbeat-sounds
+ - mikeask, "Breathing Tired" https://opengameart.org/content/breathing-tired
+ - qubodup, "Heartbeat (single sound)" https://opengameart.org/content/heartbeat-single-sound
+ - qubodup, "Punch" https://opengameart.org/content/punch
+ - thebardofblasphemy, "grunts of male death and pain" https://opengameart.org/content/grunts-male-death-and-pain
+
+crack_1/crack_2 were synthesised by tools/build_sfx.py in this research run (no third-party source).
+Layered files mix only CC0 sources. Kenney licence text: Kenney_License.txt.
