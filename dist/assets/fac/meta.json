@@ -1,0 +1,50 @@
+{
+ "Facade006": {
+  "floors": 8.0,
+  "glassFrac": 0.69
+ },
+ "Facade009": {
+  "floors": 8.0,
+  "glassFrac": 0.15
+ },
+ "Facade010": {
+  "floors": 9.31,
+  "glassFrac": 0.1
+ },
+ "Facade012": {
+  "floors": 32.0,
+  "glassFrac": 0.12
+ },
+ "Facade013": {
+  "floors": 5.33,
+  "glassFrac": 0.26
+ },
+ "Facade017": {
+  "floors": 51.2,
+  "glassFrac": 0.2
+ },
+ "Facade018A": {
+  "floors": 5.99,
+  "glassFrac": 0.52
+ },
+ "Facade019A": {
+  "floors": 5.99,
+  "glassFrac": 0.52
+ },
+ "Facade020A": {
+  "floors": 42.67,
+  "glassFrac": 0.52
+ },
+ "Facade001": {
+  "floors": 10.04,
+  "glassFrac": 0.88
+ },
+ "Facade005": {
+  "floors": 23.81,
+  "glassFrac": 0.86
+ },
+ "Facade014": {
+  "floors": 32.0,
+  "glassFrac": 0.03
+ }
+}

@@ -1,0 +1,112 @@
+<title>Red Night Combat Map</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Sans:wght@400;500&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: two vertical pipelines of stage boxes joined by labelled arrows, then a plain table. Deliberately dark: it is the game's own HUD look. */
+:root {
+  --bg: #0b0810; --panel: #151020; --line: #3a2a4a; --fg: #ecdff0; --dim: #a796b4;
+  --red: #ff1f3d; --cyan: #05d9e8; --gold: #f3c64a;
+  --display: 'Chakra Petch', 'Segoe UI', sans-serif; --body: 'IBM Plex Sans', system-ui, sans-serif; --mono: 'Share Tech Mono', ui-monospace, monospace;
+  color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 28px 48px; }
+main { max-width: 980px; margin: 0 auto; display: grid; gap: 36px; }
+h1 { font: 700 30px/1.1 var(--display); letter-spacing: .04em; margin: 0; text-wrap: balance; }
+h1 span { color: var(--red); }
+.lede { color: var(--dim); max-width: 64ch; margin: 6px 0 0; }
+h2 { font: 600 13px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--cyan); margin: 0 0 12px; }
+.flow { display: grid; gap: 0; }
+.stage { background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--red); padding: 10px 14px; display: grid; gap: 2px; }
+.stage b { font: 600 15px var(--display); letter-spacing: .03em; }
+.stage .job { color: var(--fg); }
+.stage .why { color: var(--dim); font-size: 13px; }
+.split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.split > * { min-width: 0; }
+.arrow { font: 13px var(--mono); color: var(--gold); padding: 6px 0 6px 22px; position: relative; }
+.arrow::before { content: '▼'; position: absolute; left: 4px; color: var(--red); }
+.gate { color: var(--red); }
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 12px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+td:first-child { font-family: var(--display); white-space: nowrap; }
+@media (max-width: 640px) { .split { grid-template-columns: 1fr; } h1 { font-size: 24px; } }
+</style>
+<main>
+  <header>
+    <h1>RED NIGHT <span>v9</span> · combat map</h1>
+    <p class="lede">How an enemy decides to shoot you, what happens to the bullet, and how the recorded gun sounds got from ElevenLabs into the game.</p>
+  </header>
+
+  <section>
+    <h2>Enemy brain → bullet</h2>
+    <div class="flow">
+      <div class="stage"><b>Hearing</b><span class="job">Every shot is a noise event: yours carries 75 m (16 m suppressed), theirs 45 m.</span><span class="why">Gunfire pulls monsters and gangs toward a fight they couldn't see.</span></div>
+      <div class="arrow">alerts + a fuzzy "last known" spot · rounds passing within 1.8 m add suppression</div>
+      <div class="stage"><b>Sight</b><span class="job">Checked every 0.25–0.35 s: 120° cone, 45 m unaware / 70 m alert, ×0.7 if you crouch, line of sight through walls and cars.</span><span class="why">You can sneak past, and cover actually hides you. First sighting adds a 0.45–0.85 s reaction delay.</span></div>
+      <div class="arrow">aware or not · forgets you after 14 s out of sight</div>
+      <div class="stage"><b>Squad director</b><span class="job">Every 0.6 s, aware gunmen get roles: 2 nearest suppress, the rest flank wide, melee rushers arc in, anyone under 32% HP retreats.</span><span class="why">So a group fights as a group instead of five people running at you.</span></div>
+      <div class="arrow">role per enemy</div>
+      <div class="split">
+        <div class="stage"><b>Purger brain</b><span class="job">Finds cover behind cars and crates, crouches, peeks to fire in bursts, ducks when suppressed, abandons flanked cover, hunts round buildings by street intersections, throws molotovs if you hide.</span><span class="why">The tactical layer.</span></div>
+        <div class="stage"><b>Monster brain</b><span class="job">Unaware: wander or hunt civilians. Aware: their own attacks (leap, dash, spit, hex), tracking your last known spot.</span><span class="why">They feel like predators, not turrets.</span></div>
+      </div>
+      <div class="arrow"><span class="gate">gate:</span> sees you · peeking · reaction done · under 55 m</div>
+      <div class="stage"><b>Physical bullet</b><span class="job">A real ray with spread from range, your speed, slides, their suppression and movement. First shot goes wider.</span><span class="why">Replaces the old dice-roll hit chance, so walls and cars stop bullets.</span></div>
+      <div class="arrow">first thing the ray touches</div>
+      <div class="split">
+        <div class="stage"><b>Wall / street</b><span class="job">Surface-specific hole, dust, sparks and sound (brick, stone, plaster, wood, glass storefront, metal shutter, asphalt, curb).</span><span class="why">Instanced: hundreds of holes in about 8 draw calls.</span></div>
+        <div class="stage"><b>Car</b><span class="job">Holes that move with the car, glass breaks on the 2nd hit, smoke under 60%, hood fire under 30% that cooks off, then a blast that hurts everyone within 9 m and chains to nearby cars.</span><span class="why">Cars are cover until they aren't.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Gun sound pipeline</h2>
+    <div class="flow">
+      <div class="stage"><b>ElevenLabs Sound Effects</b><span class="job">34 prompts × 4 variants (11 guns, 10 foley, 4 impact types, ricochet, glass, car blast, fire, whiz, scream, distant fire).</span><span class="why">Recorded-sounding sources that synthesis can't match.</span></div>
+      <div class="arrow">captured in the page → 1 file, red-night-sfx.json (5.5 MB) to Downloads</div>
+      <div class="stage"><b>Device bridge</b><span class="job">Staged from Downloads into the build machine.</span><span class="why">Avoided ~130 separate downloads.</span></div>
+      <div class="arrow">136 Opus clips</div>
+      <div class="stage"><b>sfxpack</b><span class="job">Scores each variant (early single transient wins), cuts guns at any second report, trims silence, fades, normalizes, encodes mono MP3.</span><span class="why">A one-shot sample has to be exactly one shot.</span></div>
+      <div class="arrow">36 MP3s (660 KB) · .45 and .50 dropped as multi-shot, replaced by pitched 9mm / sniper</div>
+      <div class="stage"><b>In game</b><span class="job">Sample + street slapback or room reverb; distant enemy fire is low-passed by range. Any missing sample falls back to the layered synth.</span><span class="why">Nothing goes silent if a file fails to load.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>City pipeline (v14)</h2>
+    <div class="flow">
+      <div class="stage"><b>Sources (all CC0)</b><span class="job">ambientCG photo facades (9 used), Poly Haven scanned props (21), Tripo people simplified to ~9k triangles for crowds.</span><span class="why">Real-world detail without hand modelling.</span></div>
+      <div class="arrow">facades: lit offices generated from the glass mask · props: cut to 600-3k triangles, 256-512 px textures</div>
+      <div class="stage"><b>City build</b><span class="job">Normal buildings get a photo facade by district; tall towers become one of 5 skyscraper designs (setback, octagon, round, twisted, art deco). About 5,600 props, 1,000 mailboxes and 8,300 grass tufts are placed along wider sidewalks, in alleys and in parks.</span><span class="why">Fills the open streets.</span></div>
+      <div class="arrow"><span class="gate">gate:</span> each prop drawn only within 24-55 m and not well behind the camera, refilled 5 times a second</div>
+      <div class="split">
+        <div class="stage"><b>Crowds</b><span class="job">Groups of 1-5 walk a loop around each block, turn or cross at corners, wait for cars, and stop to talk. 28 people on low and 46 on high. A death nearby makes everyone run.</span><span class="why">People move like people.</span></div>
+        <div class="stage"><b>Traffic</b><span class="job">7 cars on low and 12 on high drive the right-hand lane, turn at intersections, brake for people, honk and floor it at gunfire. Any of them can be carjacked. 42 parked cars.</span><span class="why">Things moving up and down the streets.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Same thing, words only</h2>
+    <div class="tbl">
+      <table>
+        <thead><tr><th>Stage</th><th>Job</th><th>What flows out</th></tr></thead>
+        <tbody>
+          <tr><td>Hearing</td><td>Turn shots into noise events</td><td>Alerts, last-known spot, suppression</td></tr>
+          <tr><td>Sight</td><td>Cone + range + line of sight, 3–4×/s</td><td>Aware flag, sees-you flag, reaction delay</td></tr>
+          <tr><td>Squad director</td><td>Assign suppress / flank / rush / retreat</td><td>One role per gunman</td></tr>
+          <tr><td>Purger / monster brain</td><td>Move, cover, peek, hunt, molotov</td><td>Shots, only when the gate passes</td></tr>
+          <tr><td>Physical bullet</td><td>Spread + ray through the world</td><td>First hit: wall, car, civilian or you</td></tr>
+          <tr><td>Impact / car damage</td><td>Holes, FX, car health and explosion</td><td>Decals, fire, blast damage</td></tr>
+          <tr><td>ElevenLabs → sfxpack</td><td>Generate, pick best take, cut, encode</td><td>36 MP3s + index</td></tr>
+          <tr><td>Audio engine</td><td>Play sample with reverb, else synth</td><td>What you hear</td></tr>
+          <tr><td>City build</td><td>Photo facades, 5 skyscraper designs, props, parks</td><td>About 5,600 placed props</td></tr>
+          <tr><td>Streaming gate</td><td>Draw props near the camera only</td><td>A few hundred visible at a time</td></tr>
+          <tr><td>Crowds and traffic</td><td>Sidewalk groups, lane-following cars</td><td>28-46 people, 7-12 moving cars</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>

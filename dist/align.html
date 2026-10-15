@@ -1,0 +1,38 @@
+<html><body style="margin:0;background:#222"><canvas id="c" width="1200" height="500"></canvas>
+<script src="three.min.js"></script><script src="GLTFLoader.js"></script><script src="meshopt_decoder.js"></script>
+<script>
+const r=new THREE.WebGLRenderer({canvas:document.getElementById('c'),antialias:true,preserveDrawingBuffer:true}); r.outputEncoding=THREE.sRGBEncoding;
+const s=new THREE.Scene(); s.add(new THREE.HemisphereLight(0xffffff,0x555555,1.4)); const d=new THREE.DirectionalLight(0xffffff,1.2); d.position.set(3,4,2); s.add(d);
+function jacobi(A){ let V=[[1,0,0],[0,1,0],[0,0,1]]; A=A.map(r=>r.slice());
+  for(let it=0;it<60;it++){ let p=0,q=1,m=Math.abs(A[0][1]); if(Math.abs(A[0][2])>m){p=0;q=2;m=Math.abs(A[0][2]);} if(Math.abs(A[1][2])>m){p=1;q=2;m=Math.abs(A[1][2]);} if(m<1e-12)break;
+    const th=0.5*Math.atan2(2*A[p][q],A[q][q]-A[p][p]), c=Math.cos(th), sn=Math.sin(th);
+    for(let k=0;k<3;k++){ const akp=A[k][p], akq=A[k][q]; A[k][p]=c*akp-sn*akq; A[k][q]=sn*akp+c*akq; }
+    for(let k=0;k<3;k++){ const apk=A[p][k], aqk=A[q][k]; A[p][k]=c*apk-sn*aqk; A[q][k]=sn*apk+c*aqk; }
+    for(let k=0;k<3;k++){ const vkp=V[k][p], vkq=V[k][q]; V[k][p]=c*vkp-sn*vkq; V[k][q]=sn*vkp+c*vkq; } }
+  return {vals:[A[0][0],A[1][1],A[2][2]], vecs:[0,1,2].map(i=>new THREE.Vector3(V[0][i],V[1][i],V[2][i]))}; }
+window.align = (file, flipZ, flipY, tilt) => new Promise(res => {
+  const L=new THREE.GLTFLoader(); L.setMeshoptDecoder(MeshoptDecoder);
+  L.load('raw/'+file, g => {
+    while(s.children.length>2) s.remove(s.children[2]);
+    const m=g.scene; m.updateMatrixWorld(true); const pts=[]; const v=new THREE.Vector3();
+    m.traverse(o=>{ if(o.isMesh){ const p=o.geometry.attributes.position; const step=Math.max(1,Math.floor(p.count/4000)); for(let i=0;i<p.count;i+=step){ v.fromBufferAttribute(p,i).applyMatrix4(o.matrixWorld); pts.push(v.clone()); } } });
+    const c=new THREE.Vector3(); pts.forEach(p=>c.add(p)); c.divideScalar(pts.length);
+    const C=[[0,0,0],[0,0,0],[0,0,0]]; pts.forEach(p=>{ const a=[p.x-c.x,p.y-c.y,p.z-c.z]; for(let i=0;i<3;i++)for(let j=0;j<3;j++)C[i][j]+=a[i]*a[j]; });
+    const E=jacobi(C); const idx=[0,1,2].sort((a,b)=>E.vals[b]-E.vals[a]);
+    let Z=E.vecs[idx[0]].clone(), Y=E.vecs[idx[1]].clone(); if(flipZ) Z.negate(); if(flipY) Y.negate();
+    const X=new THREE.Vector3().crossVectors(Y,Z).normalize(); Y.crossVectors(Z,X).normalize();
+    const B=new THREE.Matrix4().makeBasis(X,Y,Z); const R=B.clone().transpose(); // world -> aligned
+    const q=new THREE.Quaternion().setFromRotationMatrix(R); if(tilt){ q.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0), tilt*Math.PI/180)); }
+    const holder=new THREE.Group(); holder.add(m); m.quaternion.premultiply(q); s.add(holder); holder.updateMatrixWorld(true);
+    const bb=new THREE.Box3(); pts.forEach(p=>bb.expandByPoint(p.clone().applyQuaternion(q)));
+    const off=new THREE.Vector3(-(bb.min.x+bb.max.x)/2, -bb.min.y, -(bb.min.z+bb.max.z)/2); holder.position.copy(off); holder.updateMatrixWorld(true);
+    const sz=bb.getSize(new THREE.Vector3());
+    // side view from +X: screen right = -Z
+    let Lz=sz.z*1.12, H=Lz/2.4; if (H < sz.y*1.12) { H = sz.y*1.12; Lz = H*2.4; } const cam=new THREE.OrthographicCamera(-Lz/2,Lz/2,H/2+ (sz.y/2), -H/2+(sz.y/2), .01, 50);
+    cam.position.set(10, 0, 0); cam.lookAt(0,0,0); cam.top=sz.y/2+H/2; cam.bottom=sz.y/2-H/2; cam.updateProjectionMatrix();
+    r.setClearColor(0x222222); r.render(s,cam);
+    window.VIEW={Lz, top:cam.top, bot:cam.bottom}; window.PTS=pts.map(p=>p.clone().applyQuaternion(q).add(off));
+    res(JSON.stringify({file, q:[q.x,q.y,q.z,q.w].map(n=>+n.toFixed(5)), off:[off.x,off.y,off.z].map(n=>+n.toFixed(4)), size:[sz.x,sz.y,sz.z].map(n=>+n.toFixed(4)), view:{zLeft:Lz/2, zRight:-Lz/2, yTop:cam.top, yBot:cam.bottom}}));
+  });
+});
+</script></body></html>

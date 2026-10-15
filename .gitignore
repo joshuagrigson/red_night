@@ -1,0 +1,12 @@
+node_modules/
+dist/red-night.html
+dist/test.html
+dist/game.js
+dist/three.min.js
+dist/GLTFLoader.js
+dist/meshopt_decoder.js
+dist/ex/
+dist/assets/*.glb.txt
+dist/raw/
+shots/
+__pycache__/
