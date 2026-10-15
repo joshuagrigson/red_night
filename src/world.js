@@ -3,11 +3,12 @@
    ===================================================================== */
 const HALF = 240, CW = 40;
 const DIST = [
-  { id: 'cairo', name: 'CAIRO', sub: 'Neon Bazaar · Nile Quarter', fog: 0x2c1424, amb: 0xff9a3c, signs: ['القاهرة', 'NILE NOODLE', 'SPHINX SYNTH', 'KHAN BAZAAR', 'PHARAOH ARMS', 'OASIS HOTEL', 'KOSHARY 24H', 'DUNE NET', 'GIZA GRILL', 'SCARAB TECH'], cols: ['#f3a600', '#ff6a00', '#05d9e8', '#ff2a6d'] },
-  { id: 'sac', name: 'SACRAMENTO', sub: 'Gold River Arcology', fog: 0x0c1d2c, amb: 0x05d9e8, signs: ['SACRAMENTO', 'GOLD RUSH', 'CAPITOL CYBER', 'DELTA DINER', 'RIVER CITY', 'SUTTER SYNTH', 'CALI CHROME', 'MIDTOWN MOTO', 'K ST CLINIC', 'OLD TOWN'], cols: ['#05d9e8', '#f3e600', '#3dff9a', '#ffffff'] },
-  { id: 'tex', name: 'TEXARKANA', sub: 'State Line Sprawl', fog: 0x2a0f14, amb: 0xff2a6d, signs: ['TEXARKANA', 'STATE LINE', 'TWICE AS NICE', 'RED RIVER ARMS', 'PIT BBQ', 'RAILYARD', 'TOPAZ MOTEL', 'BOWIE BAR', 'LONE STAR', 'RAZORBACK'], cols: ['#ff2a6d', '#ff1f3d', '#f3e600', '#05d9e8'] },
-  { id: 'salem', name: 'SALEM', sub: 'Witch City · 1692', fog: 0x1c0f30, amb: 0xb04dff, signs: ['SALEM', 'WITCH CITY', 'HEX & BREW', '1692', 'GALLOWS HILL', 'TAROT 24/7', 'BLACK CAT', 'OLD BURYING', 'POTION LAB', 'COVEN CLUB'], cols: ['#b04dff', '#3dff6a', '#ff2a6d', '#f3a600'] },
+  { id: 'cairo', name: 'CAIRO', sub: 'Old Bazaar · Nile Quarter', fog: 0x54463a, warm: ['#ffb36a', '#ffd08a', '#ffe6c0'], amb: 0xff9a3c, signs: ['القاهرة', 'NILE NOODLE', 'SPHINX PHARMACY', 'KHAN BAZAAR', 'PHARAOH ARMS', 'OASIS HOTEL', 'KOSHARY 24H', 'DUNE TELECOM', 'GIZA GRILL', 'SCARAB GOLD'], cols: ['#f3a600', '#ff6a00', '#05d9e8', '#ff2a6d'] },
+  { id: 'sac', name: 'SACRAMENTO', sub: 'Capitol Mall · Gold River', fog: 0x3a4352, warm: ['#fff1dc', '#e8eeff', '#ffd9a8'], amb: 0x05d9e8, signs: ['SACRAMENTO', 'GOLD RUSH', 'CAPITOL LIQUOR', 'DELTA DINER', 'RIVER CITY', 'SUTTER PAWN', 'CALI TIRE', 'MIDTOWN MOTO', 'K ST CLINIC', 'OLD TOWN'], cols: ['#05d9e8', '#f3e600', '#3dff9a', '#ffffff'] },
+  { id: 'tex', name: 'TEXARKANA', sub: 'State Line Avenue', fog: 0x4e3e36, warm: ['#ffb060', '#ffd49a', '#fff0d8'], amb: 0xff2a6d, signs: ['TEXARKANA', 'STATE LINE', 'TWICE AS NICE', 'RED RIVER ARMS', 'PIT BBQ', 'RAILYARD', 'TOPAZ MOTEL', 'BOWIE BAR', 'LONE STAR', 'RAZORBACK'], cols: ['#ff2a6d', '#ff1f3d', '#f3e600', '#05d9e8'] },
+  { id: 'salem', name: 'SALEM', sub: 'Witch City · 1692', fog: 0x363e42, warm: ['#ffb050', '#ffc878', '#ffe0b0'], amb: 0xb04dff, signs: ['SALEM', 'WITCH CITY', 'HEX & BREW', '1692', 'GALLOWS HILL', 'TAROT 24/7', 'BLACK CAT', 'OLD BURYING', 'APOTHECARY', 'COVEN CLUB'], cols: ['#b04dff', '#3dff6a', '#ff2a6d', '#f3a600'] },
 ];
+const hash2 = (x, z) => { const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453; return v - Math.floor(v); };
 const districtAt = (x, z) => z < 0 ? (x < 0 ? 0 : 1) : (x < 0 ? 3 : 2);
 const LS = [];   // light sources the light pool picks from
 const FIRES = []; // fire emitters
@@ -68,17 +69,17 @@ function facadeTex(palette, lit, style, base) {
 const STYLES = {};
 function makeStyle(id, palette, lit, style, base, sx, sy, rough, metal) {
   const [a, e, bm] = facadeTex(palette, lit, style, base);
-  const mat = new T.MeshStandardMaterial({ map: a, emissiveMap: e, bumpMap: bm, bumpScale: style === 'old' ? .09 : .05, emissive: new T.Color(1, 1, 1), emissiveIntensity: 1.5, roughness: rough, metalness: metal, envMapIntensity: .8 });
+  const mat = new T.MeshStandardMaterial({ map: a, emissiveMap: e, bumpMap: bm, bumpScale: style === 'old' ? .09 : .05, emissive: new T.Color(1, 1, 1), emissiveIntensity: 1.25, roughness: rough, metalness: metal, envMapIntensity: .8 });
   worldUV(mat, sx, sy);
   STYLES[id] = { mat, list: [] };
 }
 
 function buildCity() {
-  makeStyle('glass', ['#9fe8ff', '#ffffff', '#05d9e8', '#c9a0ff'], .42, 'new', '#3a4658', 1 / 24, 1 / 56, .25, .7);
-  makeStyle('neon', ['#ff2a6d', '#05d9e8', '#f3e600', '#ffffff', '#b04dff'], .5, 'new', '#2a2238', 1 / 24, 1 / 56, .35, .5);
-  makeStyle('stone', ['#ffb347', '#ff8c2a', '#ffd27a', '#05d9e8'], .35, 'old', '#9a7a52', 1 / 16, 1 / 28, .85, .05);
-  makeStyle('brick', ['#ffb36b', '#ff6a5a', '#ffe0a0', '#ff2a6d'], .33, 'old', '#6e3426', 1 / 14, 1 / 26, .8, .05);
-  makeStyle('wood', ['#ffb347', '#ff9a3c', '#b04dff', '#3dff6a'], .28, 'old', '#3a3040', 1 / 12, 1 / 22, .9, .02);
+  makeStyle('glass', ['#fff1dc', '#e6eeff', '#ffe2b0', '#d2e0ff'], .34, 'new', '#3a4452', 1 / 24, 1 / 56, .25, .7);
+  makeStyle('neon', ['#ffd9a0', '#ffe8c8', '#eef2ff', '#ffc070', '#9ab4ff'], .36, 'new', '#2c2a2e', 1 / 24, 1 / 56, .35, .5);
+  makeStyle('stone', ['#ffb85a', '#ffcf8a', '#ffe2b0', '#ff9a40'], .3, 'old', '#9a7a52', 1 / 16, 1 / 28, .85, .05);
+  makeStyle('brick', ['#ffc27a', '#ffe0a8', '#ffd090', '#a8c0ff'], .28, 'old', '#6e3426', 1 / 14, 1 / 26, .8, .05);
+  makeStyle('wood', ['#ffb050', '#ff9a3c', '#ffd8a0', '#ff8030'], .24, 'old', '#3a3236', 1 / 12, 1 / 22, .9, .02);
   makeStyle('white', ['#fff4d0', '#ffd27a'], .4, 'old', '#c9c4bc', 1 / 14, 1 / 26, .6, .05);
 
   // ground
@@ -87,7 +88,7 @@ function buildCity() {
   ground.rotation.x = -Math.PI / 2; scene.add(ground);
 
   const signMat = new T.MeshBasicMaterial({ transparent: true, toneMapped: false, side: T.DoubleSide, depthWrite: false });
-  const trims = [], trimCols = [], clutter = [], roofs = [], roofCols = [], domes = [], domeCols = [];
+  const trimGroups = [], clutter = [], roofs = [], roofCols = [], domes = [], domeCols = [];
   const reserved = new Set();
   const blockKey = (i, j) => i * 100 + j;
   const blockOf = (x, z) => [Math.floor((x + HALF) / CW), Math.floor((z + HALF) / CW)];
@@ -104,9 +105,9 @@ function buildCity() {
     if (srand() < .55 && !(opts && opts.notrim)) {
       const col = new T.Color(spick(D.cols)); const t = .12;
       const yy = h - .2;
-      trims.push([x0 - .05, x1 + .05, yy, z0 - .05, z0 + t], [x0 - .05, x1 + .05, yy, z1 - t, z1 + .05], [x0 - .05, x0 + t, yy, z0, z1], [x1 - t, x1 + .05, yy, z0, z1]);
-      for (let k = 0; k < 4; k++) trimCols.push(col);
-      if (srand() < .4 && h > 14) { trims.push([x0 - .06, x0 + .1, h / 2, z0 - .06, z0 + .1, h]); trimCols.push(col); }
+      const tg = { col, k: hash2(x0, z0) * (style === 'neon' || style === 'glass' ? .55 : 1), list: [[x0 - .05, x1 + .05, yy, z0 - .05, z0 + t], [x0 - .05, x1 + .05, yy, z1 - t, z1 + .05], [x0 - .05, x0 + t, yy, z0, z1], [x1 - t, x1 + .05, yy, z0, z1]] };
+      if (srand() < .4 && h > 14) tg.list.push([x0 - .06, x0 + .1, h / 2, z0 - .06, z0 + .1, h]);
+      trimGroups.push(tg);
     }
     // rooftop clutter
     const n = Math.floor(sr(0, 3));
@@ -115,7 +116,8 @@ function buildCity() {
     if (signsLeft > 0 && srand() < .7 && !(opts && opts.nosign)) {
       signsLeft--;
       const txt = spick(D.signs), col = spick(D.cols);
-      const uv = addSign(txt, col, txt === 'القاهرة' ? "700 34px 'Segoe UI', 'Noto Naskh Arabic', sans-serif" : null);
+      const hs = hash2(x1, z1), isNeon = hs < (d === 1 ? .42 : .3), box = isNeon ? null : BOX_SIGNS[Math.floor(hs * 97) % BOX_SIGNS.length];
+      const uv = addSign(txt, col, txt === 'القاهرة' ? "'Segoe UI', 'Noto Naskh Arabic', sans-serif" : null, box);
       const blade = srand() < .45; const w = blade ? sr(3.2, 4.5) : sr(5, 8.5);
       const geo = new T.PlaneGeometry(w, w / 4); const uva = geo.attributes.uv;
       uva.setXY(0, uv.u0, uv.v1); uva.setXY(1, uv.u1, uv.v1); uva.setXY(2, uv.u0, uv.v0); uva.setXY(3, uv.u1, uv.v0);
@@ -140,9 +142,9 @@ function buildCity() {
       if (blade && (f === 'w' || f === 'e')) me.rotation.y = 0; // blade perpendicular to facade: plane spans x
       if (blade && (f === 'n' || f === 's')) me.rotation.y = Math.PI / 2;
       scene.add(me);
-      const c3 = new T.Color(col); addLS(me.position.x, y, me.position.z, c3, 2.2, 18);
+      const c3 = new T.Color(isNeon ? col : '#fff0d8'); addLS(me.position.x, y, me.position.z, c3, isNeon ? 2 : 1.4, isNeon ? 18 : 14);
       // wet street reflection smear
-      const smk = 'sm' + col; const sm = new T.Mesh(new T.PlaneGeometry(blade ? 1.2 : w * .7, 9), MATC[smk] || (MATC[smk] = new T.MeshBasicMaterial({ map: glowTex, color: c3, transparent: true, opacity: .35, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false })));
+      const smk = 'sm' + c3.getHexString(); const sm = new T.Mesh(new T.PlaneGeometry(blade ? 1.2 : w * .7, 9), MATC[smk] || (MATC[smk] = new T.MeshBasicMaterial({ map: glowTex, color: c3, transparent: true, opacity: isNeon ? .3 : .16, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false })));
       sm.rotation.x = -Math.PI / 2; const ox = f === 'w' ? -5 : f === 'e' ? 5 : 0, oz = f === 'n' ? -5 : f === 's' ? 5 : 0;
       sm.position.set(me.position.x + ox, .04, me.position.z + oz); if (f === 'w' || f === 'e') sm.rotation.z = Math.PI / 2; scene.add(sm);
     }
@@ -204,14 +206,25 @@ function buildCity() {
     st.list.forEach((b, k) => { v.set((b[0] + b[1]) / 2, b[4] / 2, (b[2] + b[3]) / 2); s.set(b[1] - b[0], b[4], b[3] - b[2]); q.identity(); mtx.compose(v, q, s); im.setMatrixAt(k, mtx); });
     im.frustumCulled = false; scene.add(im);
   }
-  // trims
-  if (trims.length) {
-    const im = new T.InstancedMesh(boxG, new T.MeshBasicMaterial({ toneMapped: false }), trims.length);
-    trims.forEach((t, k) => {
-      if (t.length === 6) { v.set((t[0] + t[1]) / 2, t[2], (t[3] + t[4]) / 2); s.set(t[1] - t[0], t[5], t[4] - t[3]); }
-      else { v.set((t[0] + t[1]) / 2, t[2], (t[3] + t[4]) / 2); s.set(t[1] - t[0], .18, t[4] - t[3]); }
-      q.identity(); mtx.compose(v, q, s); im.setMatrixAt(k, mtx); im.setColorAt(k, trimCols[k].clone().multiplyScalar(1.6));
-    });
+  // trims: an Augment layer (sorted so the dial adds whole buildings; warm architectural light when bare, neon when full)
+  if (trimGroups.length) {
+    trimGroups.sort((a, b) => a.k - b.k);
+    const total = trimGroups.reduce((n, g) => n + g.list.length, 0), cum = [], neon = [], real = new T.Color(0xffd6a0).convertSRGBToLinear().multiplyScalar(.75);
+    const im = new T.InstancedMesh(boxG, new T.MeshBasicMaterial({ toneMapped: false }), total); let k = 0;
+    for (const g of trimGroups) {
+      for (const t of g.list) {
+        v.set((t[0] + t[1]) / 2, t[2], (t[3] + t[4]) / 2); s.set(t[1] - t[0], t.length === 6 ? t[5] : .18, t[4] - t[3]);
+        q.identity(); mtx.compose(v, q, s); im.setMatrixAt(k, mtx); neon.push(g.col.clone().multiplyScalar(1.6)); im.setColorAt(k, real); k++;
+      }
+      cum.push(k);
+    }
+    const tmp = new T.Color();
+    const augTrims = a => {
+      const share = .14 + .86 * augShare(a), n = cum[Math.max(0, Math.round(share * cum.length) - 1)] || 0, m = smooth01((a - .12) / .6);
+      im.count = n; for (let i = 0; i < n; i++) im.setColorAt(i, tmp.copy(real).lerp(neon[i], m));
+      if (im.instanceColor) im.instanceColor.needsUpdate = true;
+    };
+    AUG_HOOKS.push(augTrims); augTrims(G.aug);
     im.frustumCulled = false; scene.add(im);
   }
   // clutter
@@ -255,7 +268,7 @@ function plaza(x0, x1, z0, z1, d) {
   for (let k = 0; k < 4; k++) barrier(cx + sr(-11, 11), cz + sr(-11, 11), srand() < .5);
 }
 const MATC = {};
-const STD = (c, r, m, e, ei) => { const k = 's' + c + '_' + r + '_' + m + '_' + e + '_' + ei; return MATC[k] || (MATC[k] = new T.MeshStandardMaterial({ color: lc(c), roughness: r === undefined ? .7 : r, metalness: m || 0, emissive: e ? lc(e) : undefined, emissiveIntensity: ei || 1 })); };
+const STD = (c, r, m, e, ei) => { const k = 's' + c + '_' + r + '_' + m + '_' + e + '_' + ei; if (MATC[k]) return MATC[k]; const o = { color: lc(c), roughness: r === undefined ? .7 : r, metalness: m || 0 }; if (e) { o.emissive = lc(e); o.emissiveIntensity = ei || 1; } return (MATC[k] = new T.MeshStandardMaterial(o)); };
 const NEON = c => { const k = 'n' + (c.isColor ? c.getHexString() : c); return MATC[k] || (MATC[k] = new T.MeshBasicMaterial({ color: c.isColor ? c : lc(c), toneMapped: false })); };
 const ADD = (c, op, extra) => { const k = 'a' + (c.isColor ? c.getHexString() : c) + '_' + op + (extra ? 'd' : ''); return MATC[k] || (MATC[k] = new T.MeshBasicMaterial(Object.assign({ color: c.isColor ? c : lc(c), transparent: true, opacity: op, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }, extra ? { side: T.DoubleSide } : {}))); };
 // static glows: one point cloud instead of hundreds of sprites
@@ -310,7 +323,7 @@ function fireBarrel(x, z) {
 }
 function barrier(x, z, rot) {
   const m = mesh(new T.BoxGeometry(rot ? .6 : 3, 1, rot ? 3 : .6), STD(0x8a8478, .9), x, .5, z);
-  const st = mesh(new T.BoxGeometry(rot ? .62 : 3.02, .12, rot ? 3.02 : .62), NEON(0xff1f3d), x, .78, z);
+  const st = mesh(new T.BoxGeometry(rot ? .62 : 3.02, .12, rot ? 3.02 : .62), STD(0xb81c1c, .45, .1, 0x5a0a0a, 1), x, .78, z);
   addBox(x - (rot ? .3 : 1.5), x + (rot ? .3 : 1.5), z - (rot ? 1.5 : .3), z + (rot ? 1.5 : .3), 1).surf = 'concrete';
 }
 function wreck(x, z, h) {
@@ -329,7 +342,7 @@ function lamp(x, z, col) {
   addBox(x - .12, x + .12, z - .12, z + .12, 7, { noshoot: true });
   const hp = new T.Vector3(1.4, 6.8, 0).applyAxisAngle(new T.Vector3(0, 1, 0), g.rotation.y).add(g.position);
   addLS(hp.x, hp.y - .5, hp.z, col, 2.6, 20);
-  const cone = new T.Mesh(new T.ConeGeometry(2.6, 6.6, 16, 1, true), ADD(col, .045, 1));
+  const cone = new T.Mesh(new T.ConeGeometry(2.6, 6.6, 16, 1, true), ADD(col, .03, 1));
   cone.position.set(hp.x, 3.4, hp.z); scene.add(cone);
 }
 // (was also named streetProps, which city2.js's prop pass silently overrode: no lamps, parked cars or barricades were ever built)
@@ -337,7 +350,7 @@ function streetFurniture() {
   // lamps at alternating intersections
   for (let a = -HALF + CW; a < HALF; a += CW) for (let b = -HALF + CW; b < HALF; b += CW) {
     if (((a + b) / CW) % 2 !== 0) continue;
-    const d = districtAt(a, b); const col = d === 3 ? 0xffa040 : d === 0 ? 0xffb347 : d === 1 ? 0x9fe8ff : 0xff5a8a;
+    const d = districtAt(a, b); const col = d === 3 ? 0xffa040 : d === 0 ? 0xffa860 : d === 1 ? 0xe6ecff : 0xffa050;
     if (d === 3) salemLantern(a + 6.6, b + 6.6); else lamp(a + 6.6, b + 6.6, col);
   }
   // parked cars (drivable) & wrecks
@@ -360,41 +373,58 @@ function boundary() {
   for (let i = -128; i < 256; i += 32) { x.fillStyle = '#c9b200'; x.beginPath(); x.moveTo(i, 128); x.lineTo(i + 16, 128); x.lineTo(i + 48, 96); x.lineTo(i + 32, 96); x.fill(); }
   x.fillStyle = '#ff1f3d'; x.font = "700 30px 'Chakra Petch', sans-serif"; x.fillText('SECTOR SEALED', 20, 50);
   const t = texFrom(c, true, true); t.repeat.set(30, 1);
-  const mat = new T.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: new T.Color(.6, .6, .6), roughness: .6, metalness: .5 });
+  const mat = new T.MeshStandardMaterial({ map: t, emissiveMap: t, emissive: new T.Color(.22, .22, .22), roughness: .8, metalness: .2 });
   const W = 2 * HALF + 24, H = 22;
   [[0, -HALF - 9, W, 4], [0, HALF + 9, W, 4], [-HALF - 9, 0, 4, W], [HALF + 9, 0, 4, W]].forEach(([x0, z0, w, d]) => {
     const m = mesh(new T.BoxGeometry(w, H, d), mat, x0, H / 2, z0); addBox(x0 - w / 2, x0 + w / 2, z0 - d / 2, z0 + d / 2, H);
-    mesh(new T.BoxGeometry(w, .3, d + .1), NEON(0xff1f3d), x0, H, z0);
+    mesh(new T.BoxGeometry(w, .3, d + .1), NEON(0x7a1010), x0, H, z0);
   });
 }
 function sky() {
+  // a real overcast night sky (CC0 Poly Haven "Kloppenheim 07", upper hemisphere) graded per hour: dusk at 7 PM,
+  // a blood moon reddening the cloud deck, sodium light pollution at the horizon matched to the fog, dawn at the end
+  const moonDir = new T.Vector3(-.289, .625, -.724).normalize();
   const mat = new T.ShaderMaterial({
-    uniforms: { top: { value: new T.Color(0x0a0418) }, mid: { value: new T.Color(0x3a0a2a) }, bot: { value: new T.Color(0x12061e) }, dawn: { value: 0 }, flash: { value: 0 } },
-    vertexShader: 'varying vec3 vP; void main(){ vP=normalize(position); gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-    fragmentShader: `varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 bot; uniform float dawn; uniform float flash;
+    uniforms: { map: { value: null }, hasMap: { value: 0 }, uOff: { value: .4111 }, expo: { value: .11 }, glow: { value: new T.Color(.08, .065, .05) }, moonDir: { value: moonDir }, moonCol: { value: new T.Color(1, .32, .24) }, dawn: { value: 0 }, dusk: { value: 0 }, flash: { value: 0 }, time: { value: 0 } },
+    vertexShader: 'varying vec3 vP; void main(){ vP=position; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader: `varying vec3 vP; uniform sampler2D map; uniform float hasMap, uOff, expo, dawn, dusk, flash, time; uniform vec3 glow, moonDir, moonCol;
       float h(vec3 p){ return fract(sin(dot(p, vec3(12.9898,78.233,45.164)))*43758.5453); }
-      void main(){ float y=vP.y; vec3 c = y>0.0 ? mix(mid, top, smoothstep(0.0,0.55,y)) : mix(mid, bot, smoothstep(0.0,-0.3,-y));
-        vec3 dc = y>0.0 ? mix(vec3(1.0,0.55,0.35), vec3(0.25,0.35,0.7), smoothstep(0.0,0.6,y)) : vec3(0.4,0.25,0.3);
-        c = mix(c, dc, dawn);
-        vec3 q=floor(vP*420.0); float st=step(0.9965,h(q))*smoothstep(0.05,0.4,y)*(1.0-dawn); c+=vec3(st);
-        c += flash*vec3(0.55,0.6,0.9)*smoothstep(-0.1,0.5,y);
-        gl_FragColor=vec4(c,1.0); }`,
+      void main(){
+        vec3 d = normalize(vP); float y = d.y, el = max(y, 0.0);
+        vec2 uv = vec2(atan(d.z, d.x) * .15915494 + .5 + uOff, clamp(asin(el) * .63661977, .004, .996));
+        vec3 tx = texture2D(map, uv).rgb; vec3 cl = mix(vec3(.25, .27, .32) * (1.0 - el * .4), pow(tx, vec3(2.2)), hasMap);
+        float md = max(dot(d, moonDir), 0.0);
+        vec3 c = cl * expo * vec3(.92, .96, 1.08);
+        c *= mix(vec3(1.0), moonCol * 2.2, smoothstep(.8, .995, md) * (1.0 - dawn));      // the moon reddens the clouds it lights
+        float hz = 1.0 - smoothstep(0.0, .3, el);
+        c = mix(c, glow, hz * hz * .9) + glow * .18 * (1.0 - smoothstep(0.0, .55, el)); // the city's own haze
+        vec3 dk = mix(vec3(.55, .2, .08), vec3(.05, .07, .16), smoothstep(0.0, .45, el)); // 7 PM: last light in the west
+        c = mix(c, c * .55 + dk * (.35 + .65 * smoothstep(.3, -1.0, d.x)) * cl * 1.6, dusk);
+        vec3 dw = mix(vec3(1.0, .55, .35), vec3(.25, .35, .7), smoothstep(0.0, .6, el));
+        c = mix(c, dw * (.6 + cl * .6), dawn);
+        if (y < 0.0) c = mix(glow, glow * .6, smoothstep(0.0, -.25, y));
+        c += flash * (cl * .9 + vec3(.04, .05, .08)) * smoothstep(-.05, .3, y);          // lightning inside the cloud deck
+        float thin = 1.0 - smoothstep(.04, .12, dot(cl, vec3(.333)));
+        c += step(.9972, h(floor(d * 460.0))) * smoothstep(.12, .5, el) * thin * .25 * (1.0 - dawn) * (1.0 - dusk);
+        c += (h(vec3(gl_FragCoord.xy, time)) - .5) / 300.0;                                 // dither the 8-bit photo
+        gl_FragColor = vec4(max(c, 0.0), 1.0); }`,
     side: T.BackSide, depthWrite: false, fog: false,
   });
-  const sk = new T.Mesh(new T.SphereGeometry(1200, 32, 16), mat); sk.renderOrder = -10; sk.userData.dyn = 1; sk.frustumCulled = false; scene.add(sk); G.sky = mat;
-  UPD.push(() => sk.position.copy(camera.position));
-  // blood moon
-  const [c, x] = cvs(256, 256); const g = x.createRadialGradient(110, 110, 10, 128, 128, 120); g.addColorStop(0, '#ff8a6a'); g.addColorStop(.7, '#c0182a'); g.addColorStop(1, '#5a0010');
+  new T.TextureLoader().load('assets/sky/clouds.jpg', t => { t.wrapS = T.RepeatWrapping; t.minFilter = T.LinearFilter; t.generateMipmaps = false; mat.uniforms.map.value = t; mat.uniforms.hasMap.value = 1; });
+  const sk = new T.Mesh(new T.SphereGeometry(1200, 48, 24), mat); sk.renderOrder = -10; sk.userData.dyn = 1; sk.frustumCulled = false; scene.add(sk); G.sky = mat;
+  UPD.push((dt, t) => { sk.position.copy(camera.position); mat.uniforms.time.value = t % 100; mat.uniforms.glow.value.copy(scene.fog.color); });
+  // blood moon: a soft disc behind thin cloud, where the photo's own moon is
+  const [c, x] = cvs(256, 256); const g = x.createRadialGradient(110, 110, 10, 128, 128, 120); g.addColorStop(0, '#ff9a7a'); g.addColorStop(.7, '#c0283a'); g.addColorStop(1, '#5a0010');
   x.fillStyle = g; x.beginPath(); x.arc(128, 128, 118, 0, TAU); x.fill();
   for (let i = 0; i < 26; i++) { x.fillStyle = `rgba(60,0,10,${rand(.15, .4)})`; x.beginPath(); x.arc(rand(40, 216), rand(40, 216), rand(5, 22), 0, TAU); x.fill(); }
-  const moonS = new T.Sprite(new T.SpriteMaterial({ map: texFrom(c, true), fog: false, depthWrite: false, toneMapped: false })); moonS.scale.setScalar(150);
-  const moonG = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: 0xff2040, fog: false, blending: T.AdditiveBlending, depthWrite: false, transparent: true })); moonG.scale.setScalar(520);
-  scene.add(moonS, moonG); const mdir = new T.Vector3(-.45, .42, -1).normalize();
-  UPD.push(() => { moonS.position.copy(camera.position).addScaledVector(mdir, 1000); moonG.position.copy(moonS.position); });
-  // searchlights
-  for (const [x, z, col] of [[-200, -200, 0xff2a6d], [200, -230, 0x05d9e8], [220, 220, 0xff1f3d], [-220, 200, 0xb04dff], [0, -230, 0xf3e600]]) {
-    const geo = new T.ConeGeometry(14, 420, 24, 1, true); geo.translate(0, -210, 0); geo.rotateX(Math.PI);
-    const m = new T.Mesh(geo, new T.MeshBasicMaterial({ color: lc(col), transparent: true, opacity: .05, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false }));
+  const moonS = new T.Sprite(new T.SpriteMaterial({ map: texFrom(c, true), fog: false, depthWrite: false, toneMapped: false, transparent: true, opacity: .62 })); moonS.scale.setScalar(70);
+  const moonG = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color: 0xff3040, fog: false, blending: T.AdditiveBlending, depthWrite: false, transparent: true, opacity: .3 })); moonG.scale.setScalar(360);
+  moonS.renderOrder = moonG.renderOrder = -9; scene.add(moonS, moonG);
+  UPD.push(() => { moonS.position.copy(camera.position).addScaledVector(moonDir, 1000); moonG.position.copy(moonS.position); const k = 1 - Math.max(G.dawn || 0, 0); moonS.material.opacity = .62 * k; moonG.material.opacity = .3 * k; });
+  // searchlights: pale police/military beams sweeping the cloud deck
+  for (const [x, z, col] of [[-200, -200, 0xdfe8ff], [200, -230, 0xdfe8ff], [220, 220, 0xffe6c8], [-220, 200, 0xdfe8ff]]) {
+    const geo = new T.ConeGeometry(12, 420, 24, 1, true); geo.translate(0, -210, 0); geo.rotateX(Math.PI);
+    const m = new T.Mesh(geo, new T.MeshBasicMaterial({ color: lc(col), transparent: true, opacity: .035, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide, fog: false }));
     m.position.set(x, 0, z); m.userData.dyn = 1; scene.add(m); const ph = Math.random() * 10;
     UPD.push((dt, t) => { m.rotation.set(Math.sin(t * .23 + ph) * .45, 0, Math.cos(t * .17 + ph) * .45); });
   }
@@ -403,19 +433,19 @@ function sky() {
   const rg = new T.BufferGeometry(); const rp = new Float32Array(N * 6);
   for (let i = 0; i < N; i++) { const x = rand(-35, 35), y = rand(-5, 30), z = rand(-35, 35); rp.set([x, y, z, x + .05, y - .9, z + .05], i * 6); }
   rg.setAttribute('position', new T.BufferAttribute(rp, 3));
-  const rain = new T.LineSegments(rg, new T.LineBasicMaterial({ color: 0x9ab0ff, transparent: true, opacity: .28, depthWrite: false })); rain.frustumCulled = false; scene.add(rain); G.rain = rain;
+  const rain = new T.LineSegments(rg, new T.LineBasicMaterial({ color: 0xb4bcc8, transparent: true, opacity: .24, depthWrite: false })); rain.frustumCulled = false; scene.add(rain); G.rain = rain;
   UPD.push((dt) => {
     const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z; const a = rg.attributes.position.array; const sp = 32 * dt;
     for (let i = 0; i < N; i++) {
       const o = i * 6; a[o + 1] -= sp; a[o + 4] -= sp;
       if (a[o + 1] < cy - 6 || Math.abs(a[o] - cx) > 36 || Math.abs(a[o + 2] - cz) > 36) { const x = cx + rand(-35, 35), y = cy + rand(15, 30), z = cz + rand(-35, 35); a[o] = x; a[o + 1] = y; a[o + 2] = z; a[o + 3] = x + .05; a[o + 4] = y - .9; a[o + 5] = z + .05; }
     }
-    rg.attributes.position.needsUpdate = true;
+    rg.attributes.position.needsUpdate = true; rg.setDrawRange(0, Math.round(N * clamp(G.rainK, 0, 1)) * 2); rain.material.opacity = .14 + .12 * G.rainK;
   });
 }
 function centerHolo() {
   const g = new T.Group(); g.position.set(0, 46, 0); g.userData.dyn = 1; scene.add(g);
-  const ringM = NEON(0xff2a6d), ringC = NEON(0x05d9e8);
+  let ringM = NEON(0xff2a6d), ringC = NEON(0x05d9e8);
   const r1 = mesh(new T.TorusGeometry(14, .25, 6, 64), ringM, 0, 0, 0, g); const r2 = mesh(new T.TorusGeometry(11, .18, 6, 64), ringC, 0, 0, 0, g);
   const [c, x] = cvs(512, 256); const t = texFrom(c, true);
   const pl = mesh(new T.PlaneGeometry(22, 11), new T.MeshBasicMaterial({ map: t, transparent: true, side: T.DoubleSide, depthWrite: false, toneMapped: false, blending: T.AdditiveBlending }), 0, 0, 0, g);
@@ -427,15 +457,18 @@ function centerHolo() {
     t.needsUpdate = true;
   };
   G.holoDraw('19:00', 'RED NIGHT · 12 HOURS');
-  UPD.push((dt, tt) => { g.rotation.y += dt * .25; r1.rotation.x = Math.sin(tt * .5) * .6 + Math.PI / 2; r2.rotation.y = tt * .7; pl.material.opacity = .8 + Math.sin(tt * 13) * .08 * (Math.random() < .05 ? 4 : 1); });
-  addLS(0, 30, 0, 0xff2a6d, 3, 40);
+  addLS(0, 30, 0, 0xff2a6d, 3, 40); const ls = LS[LS.length - 1];
+  const augHolo = a => { const k = smooth01((a - .08) / .5); g.visible = k > .01; ls.i = 3 * k; ringM.color.copy(lc(0xff2a6d)).multiplyScalar(k); ringC.color.copy(lc(0x05d9e8)).multiplyScalar(k); };
+  ringM = NEON(0xff2a6d).clone(); ringC = NEON(0x05d9e8).clone(); r1.material = ringM; r2.material = ringC;
+  AUG_HOOKS.push(augHolo); augHolo(G.aug);
+  UPD.push((dt, tt) => { if (!g.visible) return; g.rotation.y += dt * .25; r1.rotation.x = Math.sin(tt * .5) * .6 + Math.PI / 2; r2.rotation.y = tt * .7; pl.material.opacity = (.8 + Math.sin(tt * 13) * .08 * (Math.random() < .05 ? 4 : 1)) * smooth01((G.aug - .08) / .5); });
 }
 function billboards() {
   const ads = [
     [['STAY INSIDE', 'OR DON’T. NOBODY’S COMING.', 'CITY ALERT 19:00 — 07:00'], '#ff1f3d', '#f3e600', 'XII'],
-    [['KIROSHI-ISH EYES', 'SEE THEM BEFORE THEY SEE YOU', 'OPTICS 40% OFF TONIGHT'], '#05d9e8', '#ff2a6d', '◉'],
+    [['CLEAR EYES OPTICAL', 'SEE THEM BEFORE THEY SEE YOU', 'NIGHT SCOPES 40% OFF TONIGHT'], '#05d9e8', '#ff2a6d', '◉'],
     [['BLESS THE NIGHT', 'RELEASE · RESET · RENEW', 'A MESSAGE FROM THE COUNCIL'], '#b04dff', '#ffffff', '☾'],
-    [['NILE COLA', 'ICE COLD IN THE HEAT', 'CAIRO · SINCE 2077'], '#f3a600', '#05d9e8', '𓂀'],
+    [['NILE COLA', 'ICE COLD IN THE HEAT', 'CAIRO · SINCE 1952'], '#f3a600', '#05d9e8', '𓂀'],
     [['GOLD RUSH ARMS', 'EVERY GUN. EVERY NIGHT.', 'K ST · SACRAMENTO'], '#f3e600', '#ff2a6d', '$'],
     [['TWICE AS NICE', 'TEXARKANA · TX | AR', 'ONE CITY TWO STATES'], '#ff2a6d', '#05d9e8', '⇄'],
     [['HEX & BREW', 'CURSES REMOVED WHILE U WAIT', 'SALEM · OPEN TILL DAWN'], '#3dff6a', '#b04dff', '✶'],
@@ -450,7 +483,7 @@ function billboards() {
     mesh(new T.BoxGeometry(14.4, 7.4, .3), STD(0x111018, .5, .7), 0, y, -.2, g);
     mesh(new T.CylinderGeometry(.25, .25, y - 3.5, 8), STD(0x1a1a22, .5, .8), 0, (y - 3.5) / 2, -.4, g);
     const wp = new T.Vector3(); pl.getWorldPosition(wp); addLS(wp.x, wp.y - 3, wp.z, new T.Color(a[1]), 3, 30);
-    const ph = Math.random() * 9; UPD.push((dt, t) => { const f = Math.sin(t * 31 + ph) > .97 ? .3 : 1; pl.material.color.setScalar(f); });
+    const ph = Math.random() * 9; UPD.push((dt, t) => { const f = Math.sin(t * 31 + ph) > 1.02 - G.aug * .06 ? .3 : .82; pl.material.color.setScalar(f); });
   });
 }
 /* ---------- district landmarks ---------- */
@@ -473,19 +506,19 @@ function cairoLandmarks() {
   mesh(new T.SphereGeometry(7.6, 32, 16, 0, TAU, 0, Math.PI / 2), STD(0x2aa090, .25, .85), cx, 17, cz);
   mesh(new T.TorusGeometry(7.7, .15, 6, 48), NEON(0xf3a600), cx, 17, cz).rotation.x = Math.PI / 2;
   for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) { mesh(new T.SphereGeometry(2.4, 16, 8, 0, TAU, 0, Math.PI / 2), STD(0x2aa090, .25, .85), cx + a * 7.5, 14, cz + b * 7.5); }
-  minaret(cx - 13, cz - 13, 38, 0xf3a600); minaret(cx + 13, cz - 13, 38, 0x05d9e8);
+  minaret(cx - 13, cz - 13, 38, 0x9affb4); minaret(cx + 13, cz - 13, 38, 0x9affb4);
   // arches on the facade
   for (let i = -2; i <= 2; i++) mesh(new T.BoxGeometry(2.2, 5, .2), NEON(0xff8a2a), cx + i * 4, 3, cz + 11.1);
   addLS(cx, 6, cz + 13, 0xf3a600, 3, 26);
   }
-  minaret(-60, -200, 30, 0xff2a6d); minaret(-200, -60, 28, 0x05d9e8); minaret(-100, -60, 26, 0xf3a600);
+  minaret(-60, -200, 30, 0x9affb4); minaret(-200, -60, 28, 0xffe0b0); minaret(-100, -60, 26, 0x9affb4);
   // bazaar canopies along x=-80 and z=-100
   const cols = [0xff2a6d, 0xf3a600, 0x05d9e8, 0xb04dff, 0x3dff6a];
   for (let k = 0; k < 18; k++) {
     const along = k % 2 === 0; const t = -220 + k * 11; const x = along ? -80 + (k % 4 < 2 ? -7.2 : 7.2) : t + 4, z = along ? t : -100 + (k % 4 < 2 ? -7.2 : 7.2);
     if (x > -6 || z > -6) continue;
     const col = spick(cols);
-    const c = mesh(new T.PlaneGeometry(along ? 2.6 : 5, along ? 5 : 2.6), new T.MeshStandardMaterial({ color: lc(col), emissive: lc(col), emissiveIntensity: .35, side: T.DoubleSide, roughness: .9 }), x, 3.2, z);
+    const c = mesh(new T.PlaneGeometry(along ? 2.6 : 5, along ? 5 : 2.6), new T.MeshStandardMaterial({ color: lc(col), emissive: lc(col), emissiveIntensity: .1, side: T.DoubleSide, roughness: .9 }), x, 3.2, z);
     c.rotation.x = -Math.PI / 2 + (along ? 0 : .25); if (along) c.rotation.y = x < -80 ? -.25 : .25;
     for (let l = 0; l < 6; l++) glowSprite(x + (along ? 0 : -2 + l * .8), 3.0, z + (along ? -2 + l * .8 : 0), lc(0xffd27a), .5);
     if (k % 3 === 0) addLS(x, 2.8, z, col, 1.8, 12);
@@ -493,9 +526,11 @@ function cairoLandmarks() {
   // pyramids on the horizon (beyond the fog, unfogged neon outlines)
   for (const [x, z, r, h] of [[-640, -560, 210, 230], [-430, -780, 150, 160], [-820, -340, 120, 130]]) {
     const geo = new T.ConeGeometry(r, h, 4, 1); geo.rotateY(Math.PI / 4);
-    const m = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x0c0610, fog: false })); m.position.set(x, h / 2 - 2, z); scene.add(m);
-    const e = new T.LineSegments(new T.EdgesGeometry(geo), new T.LineBasicMaterial({ color: 0xf3a600, fog: false, transparent: true, opacity: .8 })); e.position.copy(m.position); scene.add(e);
+    const m = new T.Mesh(geo, new T.MeshBasicMaterial({ color: 0x0b0907, fog: false })); m.position.set(x, h / 2 - 2, z); scene.add(m);
+    const e = new T.LineSegments(new T.EdgesGeometry(geo), new T.LineBasicMaterial({ color: 0xf3a600, fog: false, transparent: true, opacity: .8 })); e.position.copy(m.position); e.userData.dyn = 1; scene.add(e);
     const cap = glowSprite(x, h - 2, z, lc(0xf3e600), 60, scene); cap.material.fog = false;
+    const augPyr = a => { const k = augShare(a); e.visible = cap.visible = k > .01; e.material.opacity = .8 * k; cap.material.opacity = k; };
+    AUG_HOOKS.push(augPyr); augPyr(G.aug);
   }
 }
 function sacLandmarks() {
@@ -534,11 +569,11 @@ function palm(x, z) {
 }
 function texLandmarks() {
   // state line down x=120 (z 0..240): painted neon line + labels
-  const line = mesh(new T.PlaneGeometry(.4, 240), NEON(0xf3e600), 120, .05, 120); line.rotation.x = -Math.PI / 2;
+  const line = mesh(new T.PlaneGeometry(.4, 240), STD(0xd8b820, .55, 0, 0x3a3000, 1), 120, .05, 120); line.rotation.x = -Math.PI / 2;
   for (let z = 20; z < 240; z += 60) {
     for (const [txt, side] of [['TEXAS', -1], ['ARKANSAS', 1]]) {
-      const [c, x] = cvs(512, 128); x.font = "700 80px 'Chakra Petch', sans-serif"; x.fillStyle = '#f3e600'; x.shadowColor = '#f3e600'; x.shadowBlur = 14; x.textAlign = 'center'; x.fillText(txt, 256, 95);
-      const p = mesh(new T.PlaneGeometry(9, 2.25), new T.MeshBasicMaterial({ map: texFrom(c, true), transparent: true, depthWrite: false, toneMapped: false }), 120 + side * 3.5, .06, z);
+      const [c, x] = cvs(512, 128); x.font = "700 80px 'Chakra Petch', sans-serif"; x.fillStyle = '#e8d24a'; x.textAlign = 'center'; x.fillText(txt, 256, 95);
+      const p = mesh(new T.PlaneGeometry(9, 2.25), new T.MeshStandardMaterial({ map: texFrom(c, true), transparent: true, depthWrite: false, roughness: .6, emissive: lc(0x2a2400), emissiveMap: texFrom(c, true) }), 120 + side * 3.5, .06, z);
       p.rotation.x = -Math.PI / 2; p.rotation.z = Math.PI / 2;
     }
   }
@@ -548,10 +583,10 @@ function texLandmarks() {
 mesh(new T.BoxGeometry(30, 16, 22), st, cx, 8, cz); addBox(cx - 15, cx + 15, cz - 11, cz + 11, 16);
   for (let i = -6; i <= 6; i++) mesh(new T.CylinderGeometry(.5, .55, 12, 10), st, cx + i * 2.2, 6, cz - 12);
   mesh(new T.BoxGeometry(30, 2, 3), st, cx, 13, cz - 12.4); addBox(cx - 15, cx + 15, cz - 14, cz - 11, 14);
-  mesh(new T.BoxGeometry(.3, 16.2, 22.2), NEON(0xf3e600), cx, 8, cz);
-  const [c, x] = cvs(1024, 128); x.font = "700 64px 'Chakra Petch', sans-serif"; x.fillStyle = '#fff'; x.shadowColor = '#ff2a6d'; x.shadowBlur = 16; x.textAlign = 'center'; x.fillText('STATE LINE POST OFFICE · TX | AR', 512, 88);
+  mesh(new T.BoxGeometry(.3, 16.2, 22.2), STD(0xd8b820, .5, .2), cx, 8, cz);
+  const [c, x] = cvs(1024, 128); x.font = "700 64px 'Chakra Petch', sans-serif"; x.fillStyle = '#f4ead6'; x.shadowColor = '#ffcf8a'; x.shadowBlur = 6; x.textAlign = 'center'; x.fillText('STATE LINE POST OFFICE · TX | AR', 512, 88);
   const sg = mesh(new T.PlaneGeometry(26, 3.25), new T.MeshBasicMaterial({ map: texFrom(c, true), transparent: true, toneMapped: false }), cx, 15, cz - 14.05); sg.rotation.y = Math.PI;
-  addLS(cx, 10, cz - 16, 0xff2a6d, 3, 26);
+  addLS(cx, 10, cz - 16, 0xffd9a8, 3, 26);
   }
   // rail line along z=200 with a stopped freight train
   const rail = STD(0x3a3a3a, .4, .9);
@@ -566,9 +601,9 @@ mesh(new T.BoxGeometry(30, 16, 22), st, cx, 8, cz); addBox(cx - 15, cx + 15, cz 
   const wx = 180, wz = 60;
   for (const [a, b] of [[-3, -3], [3, -3], [-3, 3], [3, 3]]) { mesh(new T.CylinderGeometry(.25, .25, 22, 6), rail, wx + a, 11, wz + b); addBox(wx + a - .3, wx + a + .3, wz + b - .3, wz + b + .3, 22); }
   mesh(new T.CylinderGeometry(6, 6, 7, 24), STD(0xd8d4cc, .6, .4), wx, 25, wz); mesh(new T.ConeGeometry(6.2, 3, 24), STD(0x8a8a8a, .6, .6), wx, 30, wz);
-  const [tc, tx] = cvs(512, 128); tx.font = "700 72px 'Chakra Petch', sans-serif"; tx.fillStyle = '#ff2a6d'; tx.textAlign = 'center'; tx.shadowColor = '#ff2a6d'; tx.shadowBlur = 12; tx.fillText('TEXARKANA', 256, 92);
-  const tt = texFrom(tc, true); const ring = new T.Mesh(new T.CylinderGeometry(6.05, 6.05, 2.4, 32, 1, true), new T.MeshBasicMaterial({ map: tt, transparent: true, toneMapped: false })); ring.position.set(wx, 25, wz); scene.add(ring); tt.wrapS = T.RepeatWrapping; tt.repeat.set(2, 1);
-  addLS(wx, 18, wz, 0xff2a6d, 2.5, 24);
+  const [tc, tx] = cvs(512, 128); tx.font = "700 72px 'Chakra Petch', sans-serif"; tx.fillStyle = '#7a1a14'; tx.textAlign = 'center'; tx.fillText('TEXARKANA', 256, 92);
+  const tt = texFrom(tc, true); const ring = new T.Mesh(new T.CylinderGeometry(6.05, 6.05, 2.4, 32, 1, true), new T.MeshStandardMaterial({ map: tt, transparent: true, roughness: .7 })); ring.position.set(wx, 25, wz); scene.add(ring); tt.wrapS = T.RepeatWrapping; tt.repeat.set(2, 1);
+  addLS(wx, 18, wz, 0xfff0d8, 2.5, 24); // floodlight on the tank
   // second plaza
   plaza(46, 74, 166, 194, 2);
 }
@@ -666,9 +701,9 @@ function buildApartment() {
   addBox(ax - W / 2 - 1, ax - W / 2, az - D / 2, az + D / 2, 4); addBox(ax + W / 2, ax + W / 2 + 1, az - D / 2, az + D / 2, 4);
   addBox(ax - W / 2 - 1, ax + W / 2 + 1, az - D / 2 - 1, az + D / 2 + 1, 5, { y0: H });
   // window on the west wall looking out on the neon skyline
-  const [wc, wx] = cvs(512, 256); const gg = wx.createLinearGradient(0, 0, 0, 256); gg.addColorStop(0, '#12051e'); gg.addColorStop(1, '#3a0a2a'); wx.fillStyle = gg; wx.fillRect(0, 0, 512, 256);
+  const [wc, wx] = cvs(512, 256); const gg = wx.createLinearGradient(0, 0, 0, 256); gg.addColorStop(0, '#0d0f15'); gg.addColorStop(1, '#3a2c24'); wx.fillStyle = gg; wx.fillRect(0, 0, 512, 256);
   wx.fillStyle = '#c0182a'; wx.beginPath(); wx.arc(400, 50, 22, 0, TAU); wx.fill();
-  for (let i = 0; i < 40; i++) { const bw = rand(14, 40), bh = rand(60, 220), bx = rand(0, 512); wx.fillStyle = '#07040c'; wx.fillRect(bx, 256 - bh, bw, bh); for (let k = 0; k < 20; k++) { wx.fillStyle = pick(['#ff2a6d', '#05d9e8', '#f3e600', '#ffb347']); wx.globalAlpha = rand(.3, 1); wx.fillRect(bx + rand(2, bw - 4), 256 - rand(4, bh), 2, 2); } wx.globalAlpha = 1; }
+  for (let i = 0; i < 40; i++) { const bw = rand(14, 40), bh = rand(60, 220), bx = rand(0, 512); wx.fillStyle = '#07040c'; wx.fillRect(bx, 256 - bh, bw, bh); for (let k = 0; k < 20; k++) { wx.fillStyle = pick(['#ffcf8a', '#ffe6b8', '#ffd9a0', '#c8d8ff']); wx.globalAlpha = rand(.3, 1); wx.fillRect(bx + rand(2, bw - 4), 256 - rand(4, bh), 2, 2); } wx.globalAlpha = 1; }
   const win = mesh(new T.PlaneGeometry(3.6, 1.8), new T.MeshBasicMaterial({ map: texFrom(wc, true), toneMapped: false }), -W / 2 + .02, 1.8, .4, g); win.rotation.y = Math.PI / 2;
   for (let i = 0; i < 4; i++) mesh(new T.BoxGeometry(.05, 1.8, .04), STD(0x0a0a0a, .5, .5), -W / 2 + .05, 1.8, .4 - 1.35 + i * .9, g);
   // bed (player wakes here, south-west corner)
@@ -713,8 +748,8 @@ function buildApartment() {
   const es = mesh(new T.PlaneGeometry(.6, .22), new T.MeshBasicMaterial({ map: texFrom(ec, true), transparent: true, toneMapped: false }), W / 2 - .05, 2.45, -2, g); es.rotation.y = -Math.PI / 2;
   INTER.push({ p: new T.Vector3(ax + W / 2 - .5, 1.1, az - 2), r: 1.8, label: 'Step out into the night', key: 'E', act: () => leaveApartment(), apt: 1 });
   // neon strips + lights
-  mesh(new T.BoxGeometry(.04, .04, D), NEON(0xb04dff), -W / 2 + .05, H - .05, 0, g); mesh(new T.BoxGeometry(.04, .04, D), NEON(0xff2a6d), W / 2 - .05, H - .05, 0, g);
-  addLS(ax, 2.6, az - 1.5, 0xff6aa0, 3.5, 12); addLS(ax - 4, 2.4, az + 2, 0x7a5cff, 2.5, 10); addLS(ax + 4, 2.2, az + 2.2, 0xff2030, 2.4, 9, .2);
+  mesh(new T.BoxGeometry(.04, .04, D), NEON(0xffb070), -W / 2 + .05, H - .05, 0, g); mesh(new T.BoxGeometry(.04, .04, D), NEON(0xff2a6d), W / 2 - .05, H - .05, 0, g);
+  addLS(ax, 2.6, az - 1.5, 0xffc89a, 3.3, 12); addLS(ax - 4, 2.4, az + 2, 0x8aa2ff, 1.8, 10); addLS(ax + 4, 2.2, az + 2.2, 0xff2030, 2.4, 9, .2);
   // table & clutter
   mesh(new T.BoxGeometry(1.4, .75, .8), STD(0x1a1418, .5, .4), 2.5, .38, 2.8, g); addBox(ax + 1.8, ax + 3.2, az + 2.4, az + 3.2, .76);
   mesh(new T.CylinderGeometry(.05, .05, .2, 8), NEON(0x05d9e8), 2.3, .86, 2.8, g);
@@ -747,11 +782,12 @@ class Car {
     mesh(new T.BoxGeometry(1.9, .08, .35), body, 0, 1.12, 2.15, this.g);
     mesh(new T.BoxGeometry(1.8, .07, .05), NEON(0xff1f3d), 0, .8, 2.31, this.g);
     mesh(new T.BoxGeometry(.5, .08, .05), NEON(0xeaf6ff), -.65, .8, -2.31, this.g); mesh(new T.BoxGeometry(.5, .08, .05), NEON(0xeaf6ff), .65, .8, -2.31, this.g);
-    mesh(new T.BoxGeometry(2.07, .03, 3.6), NEON(glow), 0, .5, 0, this.g);
+    if (glow != null && Math.random() > .22) glow = null; // underglow is a gang-car thing, not every car
+    if (glow != null) mesh(new T.BoxGeometry(2.07, .03, 3.6), NEON(glow), 0, .5, 0, this.g);
     this.wheels = [];
     for (const [a, b] of [[-1, -1.5], [1, -1.5], [-1, 1.5], [1, 1.5]]) { const w = mesh(new T.CylinderGeometry(.36, .36, .28, 14), dark, a * .98, .36, b, this.g); w.rotation.z = Math.PI / 2; this.wheels.push(w); }
-    const ug = new T.Mesh(new T.PlaneGeometry(3.2, 6), new T.MeshBasicMaterial({ map: glowTex, color: lc(glow), transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
-    ug.rotation.x = -Math.PI / 2; ug.position.y = .04; this.g.add(ug);
+    if (glow != null) { const ug = new T.Mesh(new T.PlaneGeometry(3.2, 6), new T.MeshBasicMaterial({ map: glowTex, color: lc(glow), transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    ug.rotation.x = -Math.PI / 2; ug.position.y = .04; this.g.add(ug); }
     this.beams = new T.Mesh(new T.ConeGeometry(2.5, 14, 12, 1, true), new T.MeshBasicMaterial({ color: 0xcfe6ff, transparent: true, opacity: .0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
     this.beams.rotation.x = -Math.PI / 2; this.beams.position.set(0, .8, -9.3); this.g.add(this.beams);
     this.wheels.forEach(w => w.userData.keep = 1); this.beams.userData.keep = 1;

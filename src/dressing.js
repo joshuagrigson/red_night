@@ -135,7 +135,7 @@ function districtSignatures() {
   FDGEO.bulb = new T.SphereGeometry(.5, 6, 4); FDMAT.bulb = new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
   for (let k = 0; k < 26; k++) {
     const line = spick(ROADS.filter(r => r < -10 && r > -HALF)), t = sr(-HALF + 10, -12), onX = srand() < .5;
-    const y = sr(5.5, 7.5), sag = sr(.8, 1.6), col = spick([0xffd27a, 0xffb347, 0xff6a3c, 0x05d9e8]);
+    const y = sr(5.5, 7.5), sag = sr(.8, 1.6), col = spick([0xffd27a, 0xffb347, 0xff6a3c, 0xfff0d0]);
     for (let b = 0; b <= 12; b++) {
       const a = b / 12, yy = y - sag * 4 * a * (1 - a), w = -6 + 12 * a;
       const x = onX ? t : line + w, z = onX ? line + w : t;
@@ -156,7 +156,8 @@ function districtSignatures() {
     g.add(pan); mesh(new T.BoxGeometry(2, .6, 1.2), STD(0x1a1a22, .4, .8), 0, 3.6, 0, g);
     for (const s of [-1, 1]) { const r = mesh(new T.BoxGeometry(.1, .1, .1), NEON(0xff1f3d), s * 1.1, 3.6, 0, g); }
     const cx = sr(30, 180), cz = sr(-220, -30), rad = sr(15, 40), hgt = sr(35, 70), ph = srand() * TAU, sp = sr(.03, .07);
-    g.userData.dyn = true; scene.add(g); UPD.push((dt, tt) => { const a = ph + tt * sp; g.position.set(cx + Math.cos(a) * rad, hgt + Math.sin(tt * .7 + ph) * 1.5, cz + Math.sin(a) * rad); g.rotation.y = -a; });
+    g.userData.dyn = true; scene.add(g); const pm = pan.material; AUG_HOOKS.push(a => { g.visible = a > .14; pm.opacity = .9 * smooth01((a - .14) / .5); }); g.visible = G.aug > .14; pm.opacity = .9 * smooth01((G.aug - .14) / .5);
+    UPD.push((dt, tt) => { if (!g.visible) return; const a = ph + tt * sp; g.position.set(cx + Math.cos(a) * rad, hgt + Math.sin(tt * .7 + ph) * 1.5, cz + Math.sin(a) * rad); g.rotation.y = -a; });
   }
 
   // ---- TEXARKANA: the existing rail line (z=200) gets a crossing that won't stop flashing
@@ -174,7 +175,7 @@ function districtSignatures() {
   const [fc, fx] = cvs(256, 256); for (let i = 0; i < 70; i++) { const g = fx.createRadialGradient(0, 0, 0, 0, 0, 1); const r = rand(20, 60), x = rand(0, 256), y = rand(0, 256); const gr = fx.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); fx.fillStyle = gr; fx.fillRect(0, 0, 256, 256); }
   const fogTex = texFrom(fc, false, true); fogTex.repeat.set(3, 3);
   for (let k = 0; k < 3; k++) {
-    const mat = new T.MeshBasicMaterial({ map: fogTex.clone(), color: 0x3a2c60, transparent: true, opacity: .06 - k * .015, depthWrite: false });
+    const mat = new T.MeshBasicMaterial({ map: fogTex.clone(), color: 0x3a4246, transparent: true, opacity: .07 - k * .015, depthWrite: false });
     mat.map.wrapS = mat.map.wrapT = T.RepeatWrapping; mat.map.repeat.set(3 + k, 3 + k); mat.map.needsUpdate = true;
     const m = new T.Mesh(new T.PlaneGeometry(236, 236), mat); m.rotation.x = -Math.PI / 2; m.position.set(-120, .35 + k * .45, 120); scene.add(m);
     const sp = .006 + k * .004; UPD.push((dt) => { mat.map.offset.x += dt * sp; mat.map.offset.y += dt * sp * .6; });

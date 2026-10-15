@@ -60,7 +60,7 @@ function facadeDetail(style, x0, x1, z0, z1, h, d, tier) {
       else { fdPush('ledge', fx, ph + (h - ph) / 2, z0 - .25, .4, h - ph, .5, 0, ledgeCol); fdPush('ledge', fx, ph + (h - ph) / 2, z1 + .25, .4, h - ph, .5, 0, ledgeCol); }
       if (srand() < .5) { fdPush('fin', x0 - .12, ph + (h - ph) / 2, fz, .14, h - ph, .14, 0, col); fdPush('fin', x1 + .12, ph + (h - ph) / 2, fz, .14, h - ph, .14, 0, col); }
     }
-    if (h > 60 && srand() < .7) { fdPush('metal', cx, h + 1 + 6, cz, .35, 12, .35, 0, 0x2a2a30); fdPush('fin', cx, h + 13.2, cz, .5, .5, .5, 0, new T.Color(0xff1f3d)); addLS(cx, h + 13, cz, 0xff1f3d, 1.2, 30, 2); }
+    if (h > 60 && srand() < .7) { fdPush('metal', cx, h + 1 + 6, cz, .35, 12, .35, 0, 0x2a2a30); fdPush('beacon', cx, h + 13.2, cz, .5, .5, .5, 0, new T.Color(0xff1f3d)); addLS(cx, h + 13, cz, 0xff1f3d, 1.2, 30, 2); }
   }
   // per-face wall stuff
   const faces = [[0, x0, z0, x1, z0], [1, x1, z0, x1, z1], [2, x1, z1, x0, z1], [3, x0, z1, x0, z0]];
@@ -78,8 +78,8 @@ function facadeDetail(style, x0, x1, z0, z1, h, d, tier) {
       fdPush('shop_' + kind + (kind === 'lit' ? Math.floor(srand() * 4) : Math.floor(srand() * 6)), px, sh / 2 + .1, pz, bw - .5, sh, 1, ry);
       if (FD_BOX) (FD_BOX.bays = FD_BOX.bays || []).push([px, pz, ux, uz, (bw - .5) / 2, sh + .1, kind === 'lit' || kind === 'dark' ? 'glass' : 'metal']);
       if (kind === 'lit' && srand() < .6) { // awning
-        fdPush('awning', ax + ux * t + nx * .75, sh + .45, az + uz * t + nz * .75, bw - .3, .1, 1.4, ry, new T.Color(spick(DIST[d].cols)).multiplyScalar(.6), .32);
-        if (srand() < .35) addLS(ax + ux * t + nx * 2.5, 2.2, az + uz * t + nz * 2.5, new T.Color(spick(DIST[d].cols)), 1.1, 9);
+        fdPush('awning', ax + ux * t + nx * .75, sh + .45, az + uz * t + nz * .75, bw - .3, .1, 1.4, ry, new T.Color(spick(['#8a1c1c', '#1d4a33', '#2a3550', '#a8741c', '#d8d0c0'])).multiplyScalar(.6), .32);
+        if (srand() < .35) addLS(ax + ux * t + nx * 2.5, 2.2, az + uz * t + nz * 2.5, new T.Color(spick(DIST[d].warm)), 1.1, 9);
       }
     }
     // AC units / dishes / mashrabiya / shutters on upper floors
@@ -132,8 +132,9 @@ function buildFacades() {
     dish: new T.MeshStandardMaterial({ color: 0xffffff, roughness: .4, metalness: .6, side: T.DoubleSide }),
     awning: new T.MeshStandardMaterial({ color: 0xffffff, roughness: .7, metalness: 0, emissive: 0xffffff, emissiveIntensity: .12 }),
     fin: new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
+    beacon: new T.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }),
   };
-  const shopCols = ['#ffb347', '#05d9e8', '#ff2a6d', '#f3e600'];
+  const shopCols = ['#ffcf8a', '#e8f0ff', '#ffd9a8', '#d0ffe0']; // tungsten, fluorescent, warm white, pharmacy
   for (let i = 0; i < 4; i++) mats['shop_lit' + i] = new T.MeshBasicMaterial({ map: shopTex('lit', shopCols[i]), toneMapped: false });
   for (let i = 0; i < 6; i++) { mats['shop_shutter' + i] = new T.MeshStandardMaterial({ map: shopTex('shutter'), roughness: .6, metalness: .6 }); mats['shop_shutterR' + i] = new T.MeshStandardMaterial({ map: shopTex('shutterR'), roughness: .8, metalness: .3 }); }
   for (let i = 0; i < 6; i++) mats['shop_dark' + i] = new T.MeshStandardMaterial({ color: 0x07080c, roughness: .1, metalness: .9 });
@@ -143,14 +144,18 @@ function buildFacades() {
     const list = FD[k]; if (!list.length) continue;
     const geo = FDGEO[k] || (k.startsWith('shop_') ? plane : k === 'tank' ? cyl : k === 'dish' ? dish : box);
     const mat = FDMAT[k] || mats[k] || mats.ledge;
+    if (k === 'fin') list.sort((a, b) => hash2(Math.round(a.x * 3), Math.round(a.z * 3)) - hash2(Math.round(b.x * 3), Math.round(b.z * 3))); // so Augment adds fins all over town
     const im = new T.InstancedMesh(geo, mat, list.length);
     list.forEach((e, i) => {
       p.set(e.x, e.y, e.z); s.set(e.sx, e.sy, e.sz); q.setFromAxisAngle(Y, e.ry); if (e.rx || e.rz) q.multiply(new T.Quaternion().setFromEuler(new T.Euler(e.rx, 0, e.rz)));
       if (k === 'dish') q.multiply(new T.Quaternion().setFromAxisAngle(new T.Vector3(1, 0, 0), -.9));
       m4.compose(p, q, s); im.setMatrixAt(i, m4);
-      if (e.c !== undefined && !k.startsWith('shop_')) { if (e.c.isColor) col.copy(e.c); else col.set(e.c).convertSRGBToLinear(); if (k === 'fin') col.multiplyScalar(1.7); im.setColorAt(i, col); }
+      if (e.c !== undefined && !k.startsWith('shop_')) { if (e.c.isColor) col.copy(e.c); else col.set(e.c).convertSRGBToLinear(); if (k === 'fin' || k === 'beacon') col.multiplyScalar(1.7); im.setColorAt(i, col); }
     });
     im.frustumCulled = false; scene.add(im); total += list.length; calls++;
+    if (k === 'fin') { // vertical neon fins are pure Augment: none on a bare city, all of them at full
+      const n0 = list.length; const augFins = a => { im.count = Math.round(n0 * augShare(a)); im.visible = im.count > 0; }; AUG_HOOKS.push(augFins); augFins(G.aug);
+    }
   }
   FD._stats = { instances: total, drawCalls: calls };
 }

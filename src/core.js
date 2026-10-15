@@ -11,6 +11,9 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const rint = (a, b) => Math.floor(rand(a, b + 1));
 const pick = a => a[Math.floor(Math.random() * a.length)];
 const TAU = Math.PI * 2;
+const smooth01 = x => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
+// how much of an Augment-only set is shown: nothing below ~.1, everything at 1
+const augShare = a => Math.pow(clamp((a - .1) / .9, 0, 1), 1.5);
 const IS_TOUCH = matchMedia('(pointer:coarse)').matches || (('ontouchstart' in window) && navigator.maxTouchPoints > 0);
 function store(k, v) {
   try {
@@ -42,7 +45,8 @@ G.aimAssist = store('aa') !== 0;        // touch aim assist, on unless switched 
 G.invertY = store('inv') === 1;
 G.rainK = 1;                            // rain intensity 0..1 (ambience drives it over the night)
 const AUG_HOOKS = [];
-function setAug(v) { G.aug = clamp(v, 0, 1); store('aug', G.aug); for (const f of AUG_HOOKS) f(G.aug); }
+function augApply(v) { G.aug = clamp(v, 0, 1); for (const f of AUG_HOOKS) f(G.aug); } // live value (animations), not saved
+function setAug(v) { if (typeof DIG !== 'undefined') DIG.tipAnim = null; augApply(v); store('aug', G.aug); }
 function setFov(v) { G.fov = v ? clamp(v, 50, 100) : 0; store('fov', G.fov); }
 function setAimAssist(on) { G.aimAssist = !!on; store('aa', on ? 1 : 0); }
 function setInvertY(on) { G.invertY = !!on; store('inv', on ? 1 : 0); }
@@ -53,6 +57,8 @@ const NET = { req: 0, done: 0 };
   window.fetch = function () { NET.req++; return f0.apply(null, arguments).then(r => { NET.done++; return r; }, e => { NET.done++; throw e; }); };
 })();
 
+// adaptive resolution state (declared before the renderer reads it; drsTick below)
+const DRS = { k: 1, ema: 1 / 60, t: 0, on: !navigator.webdriver, floor: IS_TOUCH ? .62 : .7 };
 /* ---------------- renderer ---------------- */
 const canvas = $('c');
 const renderer = new T.WebGLRenderer({ canvas, antialias: !IS_TOUCH && G.quality === 'high', powerPreference: 'high-performance' });
@@ -62,7 +68,7 @@ renderer.toneMappingExposure = 1.2;
 renderer.autoClear = false;
 function applyPixelRatio() {
   const dpr = window.devicePixelRatio || 1;
-  renderer.setPixelRatio(G.quality === 'high' ? Math.min(dpr, 2) : Math.min(dpr, IS_TOUCH ? 1.1 : 1.25));
+  renderer.setPixelRatio((G.quality === 'high' ? Math.min(dpr, 2) : Math.min(dpr, IS_TOUCH ? 1.1 : 1.25)) * DRS.k);
 }
 applyPixelRatio();
 
@@ -85,9 +91,9 @@ function onResize() {
 window.addEventListener('resize', onResize);
 
 /* ---------------- lights ---------------- */
-const hemi = new T.HemisphereLight(0x6a4cff, 0x1a0820, 0.55);
+const hemi = new T.HemisphereLight(0x8394b8, 0x2a2016, 0.5); // overcast sky over a sodium-lit city
 scene.add(hemi);
-const moon = new T.DirectionalLight(0xff6a7a, 0.35);
+const moon = new T.DirectionalLight(0xc8857a, 0.22);          // the blood moon behind the clouds
 moon.position.set(-200, 300, -400);
 scene.add(moon);
 const NL = IS_TOUCH ? 4 : 8;
@@ -95,10 +101,14 @@ const lightPool = [];
 for (let i = 0; i < NL; i++) { const l = new T.PointLight(0xffffff, 0, 26, 2); scene.add(l); lightPool.push(l); }
 const flashLight = new T.PointLight(0xffc070, 0, 14, 2); scene.add(flashLight);
 // viewmodel lighting
-vmScene.add(new T.HemisphereLight(0x9a8cff, 0x30101a, 0.9));
-const vmKey = new T.DirectionalLight(0xffffff, 0.9); vmKey.position.set(1, 2, 1.5); vmScene.add(vmKey);
-const vmRim = new T.DirectionalLight(0xff2a6d, 0.8); vmRim.position.set(-2, 0.5, -1); vmScene.add(vmRim);
-const vmCyan = new T.DirectionalLight(0x05d9e8, 0.6); vmCyan.position.set(2, -0.5, -1); vmScene.add(vmCyan);
+const vmHemi = new T.HemisphereLight(0xaab4cc, 0x2a2018, 0.85); vmScene.add(vmHemi);
+const vmKey = new T.DirectionalLight(0xfff2e0, 0.85); vmKey.position.set(1, 2, 1.5); vmScene.add(vmKey);
+// rims read as streetlight (sodium) and sky (cool) on a bare city; they drift toward magenta/cyan as Augment rises
+const vmRim = new T.DirectionalLight(0xffa860, 0.55); vmRim.position.set(-2, 0.5, -1); vmScene.add(vmRim);
+const vmCyan = new T.DirectionalLight(0x8ab4ff, 0.4); vmCyan.position.set(2, -0.5, -1); vmScene.add(vmCyan);
+const VM_RIM = [new T.Color(0xffa860), new T.Color(0xff2a6d), new T.Color(0x8ab4ff), new T.Color(0x05d9e8)];
+function augVM(a) { const k = smooth01(a); vmRim.color.copy(VM_RIM[0]).lerp(VM_RIM[1], k); vmCyan.color.copy(VM_RIM[2]).lerp(VM_RIM[3], k); vmRim.intensity = .55 + k * .25; vmCyan.intensity = .4 + k * .2; }
+AUG_HOOKS.push(augVM); augVM(G.aug);
 const vmFlash = new T.PointLight(0xffb060, 0, 3, 2); vmFlash.position.set(0, 0, -0.8); vmScene.add(vmFlash);
 
 /* ---------------- canvas textures ---------------- */
@@ -153,12 +163,12 @@ function makeWindowTex(palette, litChance, style) {
 function makeGroundTex() {
   const S = 512; const [c, x] = cvs(S, S);
   const k = S / 40; // px per meter
-  x.fillStyle = '#16131c'; x.fillRect(0, 0, S, S);
+  x.fillStyle = '#161616'; x.fillRect(0, 0, S, S);
   // asphalt noise
-  for (let i = 0; i < 9000; i++) { x.fillStyle = `rgba(${rint(30, 70)},${rint(28, 60)},${rint(40, 80)},${rand(0.05, 0.25)})`; x.fillRect(Math.random() * S, Math.random() * S, 2, 2); }
+  for (let i = 0; i < 9000; i++) { const v = rint(28, 70); x.fillStyle = `rgba(${v},${v - 2},${v - 4},${rand(0.05, 0.25)})`; x.fillRect(Math.random() * S, Math.random() * S, 2, 2); }
   // sidewalks / block (block spans 6..34 m)
-  x.fillStyle = '#2a2633'; x.fillRect(6 * k, 6 * k, 28 * k, 28 * k);
-  x.fillStyle = '#3a3546'; x.fillRect(6 * k, 6 * k, 28 * k, 1.2 * k); x.fillRect(6 * k, 6 * k, 1.2 * k, 28 * k); x.fillRect(6 * k, 32.8 * k, 28 * k, 1.2 * k); x.fillRect(32.8 * k, 6 * k, 1.2 * k, 28 * k);
+  x.fillStyle = '#2c2b29'; x.fillRect(6 * k, 6 * k, 28 * k, 28 * k);
+  x.fillStyle = '#3e3c38'; x.fillRect(6 * k, 6 * k, 28 * k, 1.2 * k); x.fillRect(6 * k, 6 * k, 1.2 * k, 28 * k); x.fillRect(6 * k, 32.8 * k, 28 * k, 1.2 * k); x.fillRect(32.8 * k, 6 * k, 1.2 * k, 28 * k);
   for (let i = 8; i < 34; i += 2) { x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(i * k, 6 * k, 1, 28 * k); x.fillRect(6 * k, i * k, 28 * k, 1); }
   // lane dashes on the road strips (centered on 0 / 40)
   x.fillStyle = '#c9b200';
@@ -177,10 +187,19 @@ function makeGroundTex() {
 const SIGN_W = 256, SIGN_H = 64;
 const signAtlas = { c: null, x: null, n: 0, tex: null };
 (() => { const [c, x] = cvs(1024, 1024); x.clearRect(0, 0, 1024, 1024); signAtlas.c = c; signAtlas.x = x; })();
-function addSign(text, color, font) {
+const BOX_SIGNS = [['#f1ead8', '#b3121e'], ['#f6d23a', '#151515'], ['#ffffff', '#1b3a8a'], ['#b3121e', '#ffffff'], ['#1d4d2c', '#f4ecd0'], ['#151515', '#f3c13a']];
+function addSign(text, color, font, box) {
   const i = signAtlas.n++; const col = i % 4, row = Math.floor(i / 4);
   const x = signAtlas.x, ox = col * SIGN_W, oy = row * SIGN_H;
   x.save(); x.beginPath(); x.rect(ox, oy, SIGN_W, SIGN_H); x.clip();
+  if (box) { // backlit lightbox: printed panel, soft falloff to the edges, dark letters
+    const [bg, fg] = box; x.fillStyle = '#0c0c0c'; x.fillRect(ox, oy, SIGN_W, SIGN_H); x.fillStyle = bg; x.fillRect(ox + 4, oy + 4, SIGN_W - 8, SIGN_H - 8);
+    const vg = x.createRadialGradient(ox + SIGN_W / 2, oy + SIGN_H / 2, 10, ox + SIGN_W / 2, oy + SIGN_H / 2, SIGN_W * .6); vg.addColorStop(0, 'rgba(255,255,255,.18)'); vg.addColorStop(1, 'rgba(0,0,0,.28)'); x.fillStyle = vg; x.fillRect(ox + 4, oy + 4, SIGN_W - 8, SIGN_H - 8);
+    let fs = 32; const ff = font || "'Chakra Petch', sans-serif"; x.font = `700 ${fs}px ${ff}`;
+    while (x.measureText(text).width > SIGN_W - 30 && fs > 12) { fs -= 2; x.font = `700 ${fs}px ${ff}`; }
+    x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = fg; x.fillText(text, ox + SIGN_W / 2, oy + SIGN_H / 2 + 2);
+    x.restore(); return { u0: col / 4, v0: 1 - (row + 1) / 16, u1: (col + 1) / 4, v1: 1 - row / 16 };
+  }
   x.fillStyle = 'rgba(4,2,10,.85)'; x.fillRect(ox + 2, oy + 2, SIGN_W - 4, SIGN_H - 4);
   x.strokeStyle = color; x.lineWidth = 3; x.shadowColor = color; x.shadowBlur = 10; x.strokeRect(ox + 5, oy + 5, SIGN_W - 10, SIGN_H - 10);
   let fs = 34; x.font = `700 ${fs}px ${font || "'Chakra Petch', sans-serif"}`;
@@ -209,10 +228,10 @@ function makeBillboard(lines, c1, c2, glyph) {
   const pm = new T.PMREMGenerator(renderer);
   const es = new T.Scene();
   const [c, x] = cvs(512, 256);
-  const g = x.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, '#120624'); g.addColorStop(.5, '#2a0c3a'); g.addColorStop(.62, '#05020a'); g.addColorStop(1, '#020104');
+  const g = x.createLinearGradient(0, 0, 0, 256); g.addColorStop(0, '#0d0f14'); g.addColorStop(.45, '#262019'); g.addColorStop(.55, '#0a0908'); g.addColorStop(1, '#050404');
   x.fillStyle = g; x.fillRect(0, 0, 512, 256);
-  const cols = ['#ff2a6d', '#05d9e8', '#f3e600', '#b026ff', '#ff6a00'];
-  for (let i = 0; i < 70; i++) { x.fillStyle = pick(cols); x.globalAlpha = rand(.3, 1); x.fillRect(Math.random() * 512, rand(90, 150), rand(3, 22), rand(2, 30)); }
+  const cols = ['#ffb066', '#ffd9a0', '#fff1d8', '#ffb066', '#b8c8ff', '#ff4030'];
+  for (let i = 0; i < 70; i++) { x.fillStyle = pick(cols); x.globalAlpha = rand(.3, 1); x.fillRect(Math.random() * 512, rand(100, 140), rand(2, 8), rand(2, 10)); }
   x.globalAlpha = 1;
   const t = texFrom(c, true);
   const m = new T.Mesh(new T.SphereGeometry(10, 32, 16), new T.MeshBasicMaterial({ map: t, side: T.BackSide }));
@@ -220,7 +239,25 @@ function makeBillboard(lines, c1, c2, glyph) {
   const rt = pm.fromScene(es, 0.02);
   scene.environment = rt.texture; vmScene.environment = rt.texture;
   pm.dispose();
+  // then the real thing: a CC0 night-street panorama (Poly Haven "Hansaplatz") for wet-street, car and glass reflections
+  const im = new Image();
+  im.onload = () => {
+    try {
+      const et = new T.Texture(im); et.encoding = T.sRGBEncoding; et.mapping = T.EquirectangularReflectionMapping; et.needsUpdate = true;
+      const pm2 = new T.PMREMGenerator(renderer); const rt2 = pm2.fromEquirectangular(et);
+      scene.environment = rt2.texture; vmScene.environment = rt2.texture; pm2.dispose(); et.dispose(); rt.texture.dispose();
+    } catch (e) { }
+  };
+  im.src = 'assets/sky/street_env.jpg';
 })();
+/* ---------------- adaptive resolution: hold the frame rate on phones by trading pixels ---------------- */
+function drsTick(dt) {
+  if (!DRS.on || G.state === 'boot') return;
+  DRS.ema = lerp(DRS.ema, dt, .05); DRS.t += dt; if (DRS.t < 2) return; DRS.t = 0;
+  let k = DRS.k; if (DRS.ema > 1 / 44) k -= .08; else if (DRS.ema < 1 / 57) k += .04;
+  k = clamp(k, DRS.floor, 1); if (Math.abs(k - DRS.k) < .01) return;
+  DRS.k = k; applyPixelRatio(); if (typeof postSize === 'function') postSize();
+}
 
 /* ---------------- audio (all synthesized) ---------------- */
 const AU = {
@@ -401,7 +438,7 @@ function makeParticles(max, additive) {
 const FXA = makeParticles(G.quality === 'high' ? 900 : 420, true);
 const FXN = makeParticles(G.quality === 'high' ? 600 : 300, false);
 const C = (hex) => new T.Color(hex);
-const COL = { spark: C(0xffc070), blood: C(0x6a0010), ichor: C(0x111111), green: C(0x2cff6a), ember: C(0xff5a10), purple: C(0xb04dff), smoke: C(0x2a2433), ash: C(0x777777), cyan: C(0x05d9e8), mag: C(0xff2a6d), white: C(0xffffff), fire: C(0xff7a1a), plasma: C(0x5dff7a) };
+const COL = { spark: C(0xffc070), blood: C(0x6a0010), ichor: C(0x111111), green: C(0x2cff6a), ember: C(0xff5a10), purple: C(0xb04dff), smoke: C(0x2c2a28), ash: C(0x777777), cyan: C(0x05d9e8), mag: C(0xff2a6d), white: C(0xffffff), fire: C(0xff7a1a), plasma: C(0x5dff7a) };
 function burst(fx, p, n, spd, life, s0, s1, color, g, up, a0, drag) {
   for (let i = 0; i < n; i++) {
     const a = Math.random() * TAU, e = rand(-0.3, 1);

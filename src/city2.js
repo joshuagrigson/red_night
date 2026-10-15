@@ -133,11 +133,13 @@ function buildSkyscrapers() {
   }
   // crown outlines (neon), rings, and blinking aircraft warning lights
   if (SKY.trims.length) {
-    const g = skyGeo('box'); const im = new T.InstancedMesh(g, new T.MeshBasicMaterial({ toneMapped: false }), SKY.trims.length * 4); let n = 0;
-    for (const [x, y, z, w, d, c] of SKY.trims) for (const [ox, oz, sx, sz] of [[0, -d / 2, w + .2, .16], [0, d / 2, w + .2, .16], [-w / 2, 0, .16, d], [w / 2, 0, .16, d]]) { p.set(x + ox, y - .1, z + oz); s.set(sx, .2, sz); q.identity(); mt.compose(p, q, s); im.setMatrixAt(n, mt); im.setColorAt(n, c.clone().multiplyScalar(1.8)); n++; }
+    const g = skyGeo('box'); const im = new T.InstancedMesh(g, new T.MeshBasicMaterial({ toneMapped: false }), SKY.trims.length * 4); let n = 0; const neon = [], real = new T.Color(0xffe2b8).convertSRGBToLinear().multiplyScalar(1.1), tc = new T.Color();
+    for (const [x, y, z, w, d, c] of SKY.trims) for (const [ox, oz, sx, sz] of [[0, -d / 2, w + .2, .16], [0, d / 2, w + .2, .16], [-w / 2, 0, .16, d], [w / 2, 0, .16, d]]) { p.set(x + ox, y - .1, z + oz); s.set(sx, .2, sz); q.identity(); mt.compose(p, q, s); im.setMatrixAt(n, mt); neon.push(c.clone().multiplyScalar(1.8)); im.setColorAt(n, real); n++; }
+    const augCrown = a => { const k = smooth01((a - .12) / .6); for (let i = 0; i < n; i++) im.setColorAt(i, tc.copy(real).lerp(neon[i], k)); im.instanceColor.needsUpdate = true; };
+    AUG_HOOKS.push(augCrown); augCrown(G.aug);
     im.frustumCulled = false; scene.add(im);
   }
-  for (const [x, y, z, r, c] of SKY.rings) { const m = new T.Mesh(new T.TorusGeometry(r, .14, 6, 48), NEON(c)); m.rotation.x = Math.PI / 2; m.position.set(x, y, z); scene.add(m); }
+  for (const [x, y, z, r, c] of SKY.rings) { const mt2 = NEON(c).clone(), nc = mt2.color.clone(), rc = new T.Color(0xffe2b8).convertSRGBToLinear(); const m = new T.Mesh(new T.TorusGeometry(r, .14, 6, 48), mt2); m.rotation.x = Math.PI / 2; m.position.set(x, y, z); m.userData.dyn = 1; scene.add(m); const f = a => mt2.color.copy(rc).lerp(nc, smooth01((a - .12) / .6)); AUG_HOOKS.push(f); f(G.aug); }
   if (SKY.beacons.length) {
     const mat = new T.SpriteMaterial({ map: glowTex, color: 0xff1020, blending: T.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false });
     const spr = SKY.beacons.map(([x, y, z]) => { const s2 = new T.Sprite(mat); s2.position.set(x, y, z); s2.scale.setScalar(3.2); s2.userData.dyn = 1; scene.add(s2); return s2; });

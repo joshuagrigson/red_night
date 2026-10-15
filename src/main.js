@@ -2,8 +2,8 @@
    RED NIGHT — game flow + main loop
    ===================================================================== */
 const PICKS = [];
-const FOGC = DIST.map(d => new T.Color(d.fog));
-const APT_FOG = new T.Color(0x0a0612);
+const FOGC = DIST.map(d => lc(d.fog));                 // district haze (authored as on-screen sRGB)
+const APT_FOG = lc(0x161412), IN_FOG = lc(0x141311), DAWN_FOG = lc(0x8a7672);
 
 function init() {
   if (CHARS_READY) for (const id in CHARS) if (CHARS[id].scene) clipsFor(id); // bake retargets up front, not mid-fight
@@ -48,7 +48,7 @@ function startNight() {
   canvas.style.filter = 'blur(8px)';
   AU.siren(9);
   flashBanner('WAKE UP', 'The sirens are going off', 3);
-  STORY.done = {}; STORY.safe = null; STORY.queue = []; STORY.cur = null; hideBeacon(); setTimeout(storyIntro, 2600);
+  G.dusk = 1; STORY.done = {}; STORY.safe = null; STORY.queue = []; STORY.cur = null; hideBeacon(); setTimeout(storyIntro, 2600);
 }
 function leaveApartment() {
   if (G.state !== 'apt') return;
@@ -159,8 +159,9 @@ let lightningT = 15;
 function updateWeather(dt) {
   lightningT -= dt;
   if (lightningT <= 0 && G.dawn < .2) { lightningT = rand(18, 40); G.bolt = .35; setTimeout(() => AU.thunder(), rand(400, 1600)); }
-  if (G.bolt > 0) { G.bolt -= dt; const k = G.bolt > .25 || (G.bolt < .15 && G.bolt > .08) ? 1 : 0; G.sky.uniforms.flash.value = k; hemi.intensity = .55 + k * 1.6; $('flash').style.opacity = k * .12; }
-  else { G.sky.uniforms.flash.value = 0; hemi.intensity = lerp(.55, 1.2, G.dawn); $('flash').style.opacity = 0; }
+  const base = lerp(.5 + (G.dusk || 0) * .3, 1.2, G.dawn);
+  if (G.bolt > 0) { G.bolt -= dt; const k = G.bolt > .25 || (G.bolt < .15 && G.bolt > .08) ? 1 : 0; G.sky.uniforms.flash.value = k; hemi.intensity = base + k * 1.4; $('flash').style.opacity = k * .12; }
+  else { G.sky.uniforms.flash.value = 0; hemi.intensity = base; $('flash').style.opacity = 0; }
 }
 
 /* ---------- the clock ---------- */
@@ -177,7 +178,8 @@ function updateClock(dt) {
     storyHour(h);
   }
   if (G.hour >= 11.6) G.dawn = clamp((G.hour - 11.6) / .4, 0, 1);
-  G.sky.uniforms.dawn.value = G.dawn;
+  G.dusk = 1 - smooth01(G.hour / 1.4);               // 7 PM: the last light leaves the western sky
+  G.sky.uniforms.dawn.value = G.dawn; G.sky.uniforms.dusk.value = G.dusk;
   if (G.hour >= 12 && G.state === 'city') {
     // sunrise: what can burn, burns
     for (const e of ENEMIES) if (!e.dead && (e.type === 'vampire' || e.type === 'demon' || e.type === 'witch')) e.die('body', null, 'sun');
@@ -187,19 +189,34 @@ function updateClock(dt) {
 }
 
 /* ---------- main loop ---------- */
+// title: slow dolly shots down each district's streets in the rain, cut through black
+const TITLE_SHOTS = [
+  [[40, 2.3, -14], [40, 2.8, -78], [40, 9, -170]],          // Sacramento: up the palm avenue toward the towers
+  [[-80, 2.6, -24], [-80, 3.2, -84], [-80, 6, -200]],       // Cairo: into the old bazaar
+  [[118, 1.9, 24], [121, 2.4, 86], [120, 4, 200]],          // Texarkana: down the state line
+  [[-120, 2.1, 36], [-120, 2.5, 96], [-120, 5, 220]],       // Salem: wet cobbles, lanterns
+  [[6, 3, 28], [10, 36, 70], [0, 34, -120]],                // crane up over the centre
+];
+const _tA = new T.Vector3(), _tB = new T.Vector3(), _tL = new T.Vector3();
+function titleCam(dt) {
+  const len = 13, t = (G.t + 2) / len, i = Math.floor(t) % TITLE_SHOTS.length, f = t - Math.floor(t), sh = TITLE_SHOTS[i];
+  _tA.fromArray(sh[0]); _tB.fromArray(sh[1]); camera.position.lerpVectors(_tA, _tB, smooth01(f * .9 + .05));
+  _tL.fromArray(sh[2]); camera.lookAt(_tL.x + Math.sin(G.t * .21) * 4, _tL.y + Math.sin(G.t * .13), _tL.z);
+  camera.fov = 52; camera.updateProjectionMatrix(); G.rain.visible = true;
+  const fd = f < .06 ? 1 - f / .06 : f > .94 ? (f - .94) / .06 : 0; $('fade').style.transition = 'none'; $('fade').style.opacity = Math.min(1, fd * 1.1);
+  scene.fog.color.lerp(FOGC[districtAt(camera.position.x, camera.position.z)], Math.min(1, dt * 3));
+  scene.fog.density = .0105; G.sky.uniforms.dusk.value = .2; G.sky.uniforms.dawn.value = 0;
+}
 let last = performance.now();
 function loop(now) {
   requestAnimationFrame(loop);
+  drsTick(Math.min(.25, (now - last) / 1000));
   let dt = Math.min(.05, (now - last) / 1000); last = now;
   if (G.hitStop > 0) { G.hitStop -= dt; dt *= .2; }
   G.t += dt; G.dt = dt;
   const st = G.state;
   if (took('pause')) { if (st === 'city' || st === 'apt') pause(); else if (st === 'paused') resume(); else if (st === 'smith') closeSmith(); }
-  if (st === 'title' || st === 'char') {
-    const a = G.t * .05; camera.position.set(Math.sin(a) * 150, 34 + Math.sin(G.t * .2) * 6, Math.cos(a) * 150); camera.lookAt(0, 26, 0);
-    camera.fov = 60; camera.updateProjectionMatrix(); G.rain.visible = true;
-    scene.fog.color.lerp(FOGC[districtAt(camera.position.x, camera.position.z)], dt * .5);
-  }
+  if (st === 'title' || st === 'char') titleCam(dt);
   if (st === 'apt' || st === 'city') {
     if (st === 'apt' && G.wakeT > 0) {
       G.wakeT -= dt; const k = 1 - clamp(G.wakeT / 3.2, 0, 1);
@@ -217,9 +234,9 @@ function loop(now) {
       updateSquads(dt); updateCivs(dt); updateMolotovs(dt); updateCarDamage(dt);
       updateWisps(dt); updateProj(dt); updatePicks(dt); updateClock(dt);
       const d = G.inside ? Math.max(0, G.dist) : districtAt(P.pos.x, P.pos.z);
-      if (G.inside) { scene.fog.color.lerp(new T.Color(0x0a0810), dt * 3); scene.fog.density = .012; }
+      if (G.inside) { scene.fog.color.lerp(IN_FOG, dt * 3); scene.fog.density = .012; }
       else if (d !== G.dist) { G.dist = d; flashBanner(DIST[d].name, DIST[d].sub, 2.2); setTxt('distName', DIST[d].name); setTxt('objective', DIST[d].sub); }
-      if (!G.inside) scene.fog.color.lerp(G.dawn > 0 ? new T.Color(0x5a3a4a) : FOGC[d], dt * .6);
+      if (!G.inside) scene.fog.color.lerp(G.dawn > 0 ? DAWN_FOG : FOGC[d], dt * .6);
       if (!G.inside) scene.fog.density = lerp(G.quality === 'high' ? .0105 : .0125, .006, G.dawn) * (d === 3 ? 1.25 : 1);
       updateWeather(dt);
     } else { scene.fog.color.copy(APT_FOG); scene.fog.density = .02; }
