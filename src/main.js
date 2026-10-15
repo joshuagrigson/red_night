@@ -226,12 +226,16 @@ function loop(now) {
     updateCamera(dt); updateBody(dt); updateVM(dt); updateFires(dt); updateMags(dt);
     P.suppressed = Math.max(0, (P.suppressed || 0) - dt * .7);
     hudUpdate(dt);
+  } else if (st === 'photo') {
+    if (typeof updatePhoto === 'function') updatePhoto(dt);
   } else if (st === 'smith' || st === 'paused' || st === 'pauseload') {
     if (G.pausedFrom === 'city' || G.prevState === 'city') { /* frozen world */ }
   } else if (st === 'end') {
     if (P.dead) { P.deadT += dt; updateCamera(dt); updateBody(dt); }
   }
   for (const f of UPD) f(dt, G.t);
+  if (typeof updateAmbience === 'function') updateAmbience(dt, st);
+  if (typeof updateDigital === 'function') updateDigital(dt, st);
   FXA.update(dt); FXN.update(dt);
   for (const tr of tracers) { if (tr.t > 0) { tr.t -= dt; tr.m.material.opacity = Math.max(0, tr.t / .07) * .9; if (tr.t <= 0) tr.m.visible = false; } }
   updateLights(dt);

@@ -244,7 +244,7 @@ function buildCity() {
 
   // ---- landmarks & props
   cairoLandmarks(); sacLandmarks(); texLandmarks(); salemLandmarks();
-  streetProps(); boundary(); sky(); centerHolo(); billboards();
+  streetFurniture(); boundary(); sky(); centerHolo(); billboards();
 }
 
 function plaza(x0, x1, z0, z1, d) {
@@ -332,7 +332,8 @@ function lamp(x, z, col) {
   const cone = new T.Mesh(new T.ConeGeometry(2.6, 6.6, 16, 1, true), ADD(col, .045, 1));
   cone.position.set(hp.x, 3.4, hp.z); scene.add(cone);
 }
-function streetProps() {
+// (was also named streetProps, which city2.js's prop pass silently overrode: no lamps, parked cars or barricades were ever built)
+function streetFurniture() {
   // lamps at alternating intersections
   for (let a = -HALF + CW; a < HALF; a += CW) for (let b = -HALF + CW; b < HALF; b += CW) {
     if (((a + b) / CW) % 2 !== 0) continue;
@@ -341,14 +342,15 @@ function streetProps() {
   }
   // parked cars (drivable) & wrecks
   const glowCols = [0xff2a6d, 0x05d9e8, 0xf3e600, 0xb04dff, 0x3dff6a];
-  for (let k = 0; k < 52; k++) {
+  const nPark = G.quality === 'high' ? 20 : 12; let nWreck = 6;
+  for (let k = 0; k < nPark + nWreck + 10; k++) {
     const alongX = srand() < .5, line = spick(ROADS.slice(1, -1)), t = sr(-HALF + 10, HALF - 10), side = srand() < .5 ? -3.3 : 3.3;
     const x = alongX ? t : line + side, z = alongX ? line + side : t;
     if (Math.abs(x) < 12 && Math.abs(z) < 12) continue;
     if (x > 186 && x < 214 && z < 0) continue;
     if (CARS.some(o => Math.abs(o.pos.x - x) < 3 && Math.abs(o.pos.z - z) < 6.5)) continue;
-    if (k < 42) CARS.push(new Car(x, z, alongX ? (side > 0 ? Math.PI / 2 : -Math.PI / 2) : (side > 0 ? 0 : Math.PI), spick([0x1a1a22, 0x8a0a2a, 0x0a2a4a, 0xe8e8f0, 0x111111, 0x3a0a5a]), spick(glowCols)));
-    else wreck(x, z, alongX ? Math.PI / 2 : 0);
+    if (CARS.length < nPark) CARS.push(new Car(x, z, alongX ? (side > 0 ? Math.PI / 2 : -Math.PI / 2) : (side > 0 ? 0 : Math.PI), spick([0x1a1a22, 0x8a0a2a, 0x0a2a4a, 0xe8e8f0, 0x111111, 0x3a0a5a]), spick(glowCols)));
+    else if (nWreck-- > 0) wreck(x, z, alongX ? Math.PI / 2 : 0);
   }
   // barricades + fire barrels at random intersections
   for (let k = 0; k < 16; k++) { const a = spick(ROADS.slice(1, -1)), b = spick(ROADS.slice(1, -1)); if (Math.abs(a) < 20 && Math.abs(b) < 20) continue; if (a === 200 && b < 0) continue; fireBarrel(a + sr(-4, 4), b + sr(-4, 4)); barrier(a + sr(-5, 5), b + sr(-5, 5), srand() < .5); }

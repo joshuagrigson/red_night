@@ -35,6 +35,23 @@ const G = {
   camMode: 'fpp',
 };
 if (IS_TOUCH) document.body.classList.add('touch');
+// Augment: how much of the cyberpunk "net layer" sits over the real city (0 = bare city, 1 = full overlay)
+G.aug = (() => { const v = store('aug'); return typeof v === 'number' ? v : .35; })();
+G.fov = store('fov') || 0;              // 0 = the camera mode's default FOV; otherwise degrees
+G.aimAssist = store('aa') !== 0;        // touch aim assist, on unless switched off
+G.invertY = store('inv') === 1;
+G.rainK = 1;                            // rain intensity 0..1 (ambience drives it over the night)
+const AUG_HOOKS = [];
+function setAug(v) { G.aug = clamp(v, 0, 1); store('aug', G.aug); for (const f of AUG_HOOKS) f(G.aug); }
+function setFov(v) { G.fov = v ? clamp(v, 50, 100) : 0; store('fov', G.fov); }
+function setAimAssist(on) { G.aimAssist = !!on; store('aa', on ? 1 : 0); }
+function setInvertY(on) { G.invertY = !!on; store('inv', on ? 1 : 0); }
+// asset fetch progress for the loading screen (every GLB/texture goes through fetch or Image)
+const NET = { req: 0, done: 0 };
+(() => {
+  const f0 = window.fetch && window.fetch.bind(window); if (!f0) return;
+  window.fetch = function () { NET.req++; return f0.apply(null, arguments).then(r => { NET.done++; return r; }, e => { NET.done++; throw e; }); };
+})();
 
 /* ---------------- renderer ---------------- */
 const canvas = $('c');
