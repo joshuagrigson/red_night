@@ -216,8 +216,11 @@ function fighterScan(e, dt) {
   // the player: v21's rules (crouching shortens it, a hot night lengthens it, too close to miss)
   if (tgOk(e, PLY) && hostile(e, PLY)) {
     const dx = P.pos.x - e.pos.x, dz = P.pos.z - e.pos.z, d = Math.hypot(dx, dz) || 1;
-    const range = (aw ? 70 : 45 * (1 + HEAT.level * .06)) * (P.crouching ? .7 : 1), feel = d < (P.crouching ? 3 : 6), loud = G.t - (P.lastFire || -99) < 1.5 && d < 60;
-    if (feel || loud || ((dx * fx + dz * fz) / d > cone && d < range)) scCand(PLY, d * (cur === PLY ? .65 : 1) * (grudge(e, PLY) ? .6 : 1) * (e.fac === 'purger' ? .85 : 1));
+    // a crew or looter mid-fight with someone else lets a quiet bystander be: backing off a rival used to carry it into a
+    // player standing behind, who then ranked as the nearest hostile. Firing, a grudge or bumping into you still count
+    const busy = cur && cur !== PLY && (e.type === 'crew' || e.fac === 'looter') && !grudge(e, PLY) && G.t - (P.lastFire || -99) > 4;
+    const range = (aw ? 70 : 45 * (1 + HEAT.level * .06)) * (P.crouching ? .7 : 1), feel = d < (P.crouching || busy ? 3 : 6), loud = G.t - (P.lastFire || -99) < 1.5 && d < 60;
+    if (feel || loud || (!busy && (dx * fx + dz * fz) / d > cone && d < range)) scCand(PLY, d * (cur === PLY ? .65 : 1) * (grudge(e, PLY) ? .6 : 1) * (e.fac === 'purger' ? .85 : 1));
   }
   for (const o of ENEMIES) {
     if (o === e || o.dead || !(o.waitT < 0) || o.vanish > 0 || (o.R && !o.R.root.visible)) continue;

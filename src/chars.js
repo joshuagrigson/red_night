@@ -177,6 +177,9 @@ function bakeCtx(id) {
   return C;
 }
 const _bq = new T.Quaternion(), _bq2 = new T.Quaternion(), _bv = new T.Vector3(), _bs = new T.Vector3();
+// clips that play once and hold their last frame (makeGLBRig): they must be sampled that way too, or the sample at
+// t = duration wraps to frame 0 and a corpse's last pose is its first (every baked model stood back up when 'die' ended)
+const ONESHOT = { die: 1, fall: 1, hit: 1, slash: 1, punch: 1, cast: 1 };
 function bakeClip(C, logical) {
   const want = CLIPMAP[logical]; let src = ANIMLIB.raw[want];
   if (!src) { const k = Object.keys(ANIMLIB.raw).find(n => n.startsWith(want)); if (k) src = ANIMLIB.raw[k]; }
@@ -198,7 +201,9 @@ function bakeClip(C, logical) {
   }
   if (C.bake) {
     const S = retargetSrc(), tgt = C.tgt, fps = 30, n = Math.max(2, Math.ceil(src.duration * fps) + 1), times = new Float32Array(n), vals = tgt.map(() => new Float32Array(n * 4));
-    const act = S.mixer.clipAction(src); act.reset(); act.play();
+    const act = S.mixer.clipAction(src); act.reset();
+    if (ONESHOT[logical]) { act.setLoop(T.LoopOnce, 1); act.clampWhenFinished = true; } else act.setLoop(T.LoopRepeat, Infinity);
+    act.play();
     for (let f = 0; f < n; f++) {
       const time = Math.min(src.duration, f / fps); times[f] = time;
       S.mixer.setTime(time); S.s.updateMatrixWorld(true); // every world matrix is fresh: read them directly, parents before children
@@ -235,7 +240,7 @@ function makeGLBRig(id) {
   const mixer = new T.AnimationMixer(m); const clips = clipsFor(id); const actions = {};
   for (const n in clips) {
     const a = mixer.clipAction(clips[n]); actions[n] = a;
-    if (n === 'die' || n === 'fall' || n === 'hit' || n === 'slash' || n === 'punch' || n === 'cast') { a.setLoop(T.LoopOnce, 1); a.clampWhenFinished = true; }
+    if (ONESHOT[n]) { a.setLoop(T.LoopOnce, 1); a.clampWhenFinished = true; }
   }
   const head = findBone(m, 'head'), hand = findBone(m, 'righthand'), lhand = findBone(m, 'lefthand'), hips = findBone(m, 'hips'), spine = findBone(m, 'spine2') || findBone(m, 'spine1');
   // the procedural rig's material slots, never rendered on a scanned model: one shared set instead of six per person

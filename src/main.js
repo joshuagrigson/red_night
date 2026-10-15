@@ -158,7 +158,7 @@ function endScreen(won) {
   for (const id of ['dmg', 'poss', 'hex']) $(id).style.opacity = 0; // the hurt/possession vignettes stop updating here, so clear them
   $('endText').textContent = won ? 'The sirens wind down. The sun comes up over four cities that are pretending it never happened.' : 'Red Night keeps going without you. Wake up and try again.';
   const sv = Math.floor(G.hour); const mins = Math.floor((G.hour - sv) * 60);
-  const stats = [[P.score.toLocaleString(), 'Score'], [P.kills, 'Kills'], [P.heads, 'Headshots'], [Math.round(P.longest) + 'm', 'Longest shot'], [P.exorcisms, 'Exorcisms'], [`${sv}h ${mins}m`, 'Survived']];
+  const stats = [[P.score.toLocaleString(), 'Score'], [P.kills, 'Kills'], [P.heads, 'Headshots'], [Math.round(P.longest) + 'm', 'Longest shot'], ...(G.supernatural !== 'off' || P.exorcisms ? [[P.exorcisms, 'Exorcisms']] : []), [`${sv}h ${mins}m`, 'Survived']]; // no monsters, no exorcisms line
   $('endStats').innerHTML = stats.map(([b, s]) => `<div><b>${b}</b><span>${s}</span></div>`).join('');
   const best = store('best') || 0; if (P.score > best) store('best', P.score);
 }

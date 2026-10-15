@@ -107,6 +107,7 @@ function syncChips() {
   document.querySelectorAll('[data-bsz]').forEach(b => b.classList.toggle('sel', b.dataset.bsz === G.btnSize));
   document.querySelectorAll('[data-lf]').forEach(b => b.classList.toggle('sel', (b.dataset.lf === '1') === !!G.leftFire));
   document.querySelectorAll('[data-sn]').forEach(b => b.classList.toggle('sel', b.dataset.sn === G.supernatural));
+  { const l = document.getElementById('ledeSn'); if (l) l.hidden = G.supernatural === 'off'; } // the title's monster line goes with them
   document.querySelectorAll('.chip[data-q],.chip[data-n],.chip[data-s],.chip[data-m],.chip[data-aa],.chip[data-inv],.chip[data-bsz],.chip[data-lf],.chip[data-sn]').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('sel')));
 }
 function setupMenus() {
