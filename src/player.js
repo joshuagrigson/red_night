@@ -921,7 +921,8 @@ function enterCar(c) {
   // drop whatever the hands were doing (a reload, swing or inspect used to resume mid-way on the way out)
   P.inCar = c; c.occ = true; P.ads = 0; P.adsHeld = false; P.reloadT = 0; P.shellMode = false; P.rStages = null; P.meleeT = 0; P.inspectT = 0; P.cycleT = 0; P.slide = 0; P.slideCam = 0; P.crouching = false; P.sprint = false; P.fireQ = 0; INP.brake = false;
   const ba = $('bAds'); if (ba) ba.classList.remove('on');
-  flashBanner('BEHIND THE WHEEL', IS_TOUCH ? 'Stick to drive · BRAKE slides · EXIT CAR gets out' : 'WASD drive · Space handbrake · E to exit', 1.4);
+  // on a phone the hint wraps: only between its three parts (no-break spaces inside each)
+  flashBanner('BEHIND THE WHEEL', IS_TOUCH ? ['Stick to drive', 'BRAKE slides', 'EXIT CAR gets out'].map(s => s.replace(/ /g, '\u00a0')).join('\u00a0· ') : 'WASD drive · Space handbrake · E to exit', 1.4);
   AU.engineSet(true, 0);
 }
 function exitCar() {
