@@ -72,7 +72,7 @@ function clearNight() {
   if (P.inCar) { P.inCar.occ = false; P.inCar = null; }
   AU.engineSet(false);
   resetCombat();
-  clearTimeout(G.endT); clearTimeout(STORY.introT); G.endT = STORY.introT = 0; // a quit or restart inside the 2-3 s countdown used to fire the old night's end screen or intro
+  clearTimeout(G.endT); clearTimeout(STORY.introT); clearTimeout(G.transitT); G.endT = STORY.introT = G.transitT = 0; // a quit or restart inside the 2-3 s countdown used to fire the old night's end screen or intro
   gridReset(); uiReset();
 }
 function startNight() {
@@ -97,7 +97,8 @@ function startNight() {
 function leaveApartment() {
   if (G.state !== 'apt') return;
   $('fade').style.transition = 'opacity .5s'; $('fade').style.opacity = 1; G.state = 'transit';
-  setTimeout(() => {
+  G.transitT = setTimeout(() => {
+    G.transitT = 0; if (G.state !== 'transit') return; // quit or restarted inside the fade
     P.pos.set(0, 0, 8); P.yaw = 0; P.pitch = 0; P.vel.set(0, 0, 0); G.state = 'city'; G.started = true; G.dist = -1;
     $('fade').style.opacity = 0; AU.siren(12); shake(.2);
     flashBanner('THE PURGE HAS BEGUN', 'Survive until 7:00 AM', 3.4);

@@ -31,7 +31,12 @@ function digText() {
 function digFrag(f, fresh) {
   const side = Math.random() < .5 ? -1 : 1, w = DIG.w, h = DIG.h;
   // a mid-height band: the HUD corners and the thumb clusters own the top and bottom of the screen
-  f.side = side; f.x = side < 0 ? rand(.015, .2) * w : rand(.8, .985) * w; f.y = (fresh ? rand(.3, .62) : rand(.5, .64)) * h;
+  f.side = side; f.x = side < 0 ? rand(.015, .2) * w : rand(.8, .985) * w;
+  for (let t = 0; t < 8; t++) { // a few tries for a free line: in a narrow band, overlapping fragments read as mush
+    f.y = (fresh ? rand(.3, .62) : rand(.5, .64)) * h; let ok = true;
+    for (const o of DIG.frags) if (o !== f && o.side === side && o.y !== undefined && Math.abs(o.y - f.y) < 18 * DIG.k) { ok = false; break; }
+    if (ok) break;
+  }
   f.vy = -rand(5, 13) * DIG.k; f.vx = side * rand(-1.5, 1.5) * DIG.k; f.life = 0; f.max = rand(5, 13); f.text = digText(); f.col = pick(DIG_COLS); f.sz = rand(9, 12.5); f.a = rand(.35, .8);
   const edge = side < 0 ? 1 - f.x / (w * .22) : (f.x - w * .78) / (w * .22), px = f.sz * (1 + clamp(edge, 0, 1) * .25) * DIG.k;
   f.font = `${px.toFixed(1)}px 'Share Tech Mono', monospace`; f.tw = f.text.length * px * .55; f.th = px; // cached: no font string or measure per frame
