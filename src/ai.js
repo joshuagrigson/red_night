@@ -375,6 +375,10 @@ const NPC_WEAP = {
   patriot15: { dmg: 8, burst: [2, 4], gap: .1, cd: [.9, 1.6], range: 56 },
   riot: { dmg: 20, burst: [1, 1], gap: .9, cd: [.9, 1.5], range: 27, spread: 1.7 }, // slugs: a porch's reach
   longshot: { dmg: 30, burst: [1, 1], gap: 1, cd: [2, 3.2], range: 75, spread: .45 },
+  warden9: { dmg: 8, burst: [1, 3], gap: .22, cd: [.8, 1.5], range: 38 },
+  bubblegum: { dmg: 5, burst: [4, 8], gap: .06, cd: [1.2, 2.1], range: 30 },
+  ember: { dmg: 17, burst: [1, 2], gap: .42, cd: [1, 1.7], range: 24, spread: 1.8 }, // a semi-auto breacher: two quick slugs
+  venom: { dmg: 8, burst: [4, 8], gap: .09, cd: [1.4, 2.4], range: 58 },
 };
 const COVB = { t: -1, n: 0 }, _fcE = new T.Vector3();
 // cover searches are the expensive part of a fight (dozens of sightlines each): a couple a frame, and none for a fight nobody can see
@@ -786,7 +790,8 @@ function fragBlast(g) {
 
 /* ---------- civilians: crowds that walk the sidewalks in groups ---------- */
 const CIVS = [], GROUPS = [], CIVHID = [], CIVCAM = { x: 0, z: 0, fx: 0, fz: -1 };
-const CIV_RIGS = ['civilian_lo', 'suit_lo', 'male_lo', 'female_lo', 'civilian_lo', 'female_lo'];
+// the last four are v23's dressed people (never recoloured, so one each: a street of identical drifters reads as clones)
+const CIV_RIGS = ['civilian_lo', 'suit_lo', 'male_lo', 'female_lo', 'civilian_lo', 'female_lo', 'suitman_lo', 'drifter_lo', 'worker_lo', 'hoodie'];
 const CLOTHES = [0x1c1c22, 0x2a2f3a, 0x3a2a24, 0x5a5048, 0x6a1a1a, 0x1a3a5a, 0x2a4a2a, 0x8a8478, 0xa89a7a, 0x4a3a5a, 0x101014, 0x7a5a2a];
 const HAIRN = [0x0e0c0c, 0x2a1a10, 0x4a2a16, 0x8a6a3a, 0xc8b080, 0x6a6a6a];
 let _scrT = -9, _civFeedT = -99;
@@ -803,7 +808,7 @@ class Civ {
     this.goalK = 0; this.goalT = -9; this.ginX = 0; this.ginZ = 0; this.hideCar = null; this.fade = 0; this.fm = null; this.pushT = 0;
     this.mode = 'walk'; this.st = { speed: 0, phase: 0, hold: 'none', t: 0, attack: 0, flinch: 0, death: 0, crouch: 0 };
     this.grp = grp || null; this.slot = slot || 0; this.pace = rand(.92, 1.08);
-    this.rig = pick(CIV_RIGS);
+    const ok = CHARS_READY ? CIV_RIGS.filter(rigReady) : []; this.rig = ok.length ? pick(ok) : pick(CIV_RIGS); // bodies still streaming in sit out
     const glb = CHARS_READY && (makeGLBRig(this.rig) || makeGLBRig(this.rig.replace('_lo', '')));
     if (glb) { customizeGLB(glb, { skin: pick(SKINS), hairCol: pick(HAIRN), top: pick(CLOTHES), bottom: pick(CLOTHES), accent: 0x222222, k: .62 }); this.R = glb; }
     else this.R = makeRig({ gender: Math.random() < .5 ? 'f' : 'm', skin: pick(SKINS), hair: pick(HAIRS), hairCol: pick(HAIR_COLS), top: pick([0x4a4a52, 0x2a3a4a, 0x5a3a2a]), bottom: 0x1c2a44, accent: 0x222222 });

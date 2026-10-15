@@ -12,6 +12,13 @@ const OUTFITS = {
   netrunner: { name: 'Hacker', top: 0x0a1a24, bottom: 0x0a1018, accent: 0x05d9e8, sleeve: 1, visor: 1 },
   nomad: { name: 'Nomad', top: 0x4a2a16, bottom: 0x1c2a44, accent: 0xff6a00, sleeve: 1 },
   corpo: { name: 'Corporate', top: 0xd8d6dc, bottom: 0x2a2a30, accent: 0xff2a6d, sleeve: 1 },
+  // v23: men only, worn exactly as modelled (no colour, skin or hair picks). The colours here dress the first-person arms
+  // (sleeve, cuff, wrist) and the box rig if the models can't load
+  agent: { name: 'Agent', top: 0x17171c, bottom: 0x17171c, accent: 0xe4e4e8, skin: 0xe8bc9c, sleeve: 1, male: 1, dressed: 1 },
+  drifter: { name: 'Drifter', top: 0xe2b294, bottom: 0x283246, accent: 0x18181c, skin: 0xe2b294, sleeve: 1, male: 1, dressed: 1 },
+  scav: { name: 'Scavenger', top: 0x8c8c92, bottom: 0x4a4a36, accent: 0x77777e, skin: 0xd9a888, sleeve: 1, male: 1, dressed: 1 },
+  officer: { name: 'Officer', top: 0x1b1e27, bottom: 0x1b1e27, accent: 0x262a36, skin: 0xe8bc9c, sleeve: 1, male: 1, dressed: 1 },
+  utility: { name: 'Utility', top: 0x2150b4, bottom: 0x2150b4, accent: 0xd6dbe2, skin: 0xe8bc9c, sleeve: 1, male: 1, dressed: 1 },
 };
 const SKINS = [0xf1c8a8, 0xd9a07a, 0xa86a44, 0x7a4a2c, 0x4a2c1a];
 const HAIRS = ['buzz', 'short', 'long', 'mohawk', 'bob'];
@@ -46,14 +53,17 @@ const npcName = e => (e.type === 'crew' && FACTIONS[e.fac] ? FACTIONS[e.fac].nam
 const npcOne = e => FACTIONS[e.fac] ? FACTIONS[e.fac].one : 'a ' + (ET[e.type] ? ET[e.type].name.toLowerCase() : 'stranger');
 // how each faction dresses and arms: a plain crowd body in faction colours, one or two shared pieces, a gun from the core arsenal
 const FLOOK = {
-  watch: { rigs: ['male_lo', 'male_lo', 'female_lo', 'civilian_lo'], top: [0xd8561a, 0xc84a12, 0xe0661e], bottom: [0x2a3550, 0x3a3428, 0x2a2e36], k: .82, guns: ['riot', 'riot', 'longshot', 'preacher'], ranged: 1, att: ['cap'] },
-  eastline: { rigs: ['male_lo', 'civilian_lo', 'female_lo', 'male_lo', 'suit_lo'], top: [0xc8a414, 0xb89410, 0xd2ae1c], bottom: [0x141418, 0x1c1c22, 0x22201c], k: .82, guns: ['vexor', 'vexor', 'preacher', 'kalash'], ranged: .8, att: ['band'] },
-  rails: { rigs: ['male_lo', 'civilian_lo', 'female_lo', 'male_lo', 'suit_lo'], top: [0x23743a, 0x1e6432, 0x2a8444], bottom: [0x141418, 0x1c1c22, 0x26241e], k: .82, guns: ['vexor', 'kalash', 'preacher', 'kalash'], ranged: .8, att: ['band'] },
-  looter: { rigs: ['civilian_lo', 'civilian_lo', 'female_lo'], top: [0x6a6a70, 0x5e5862, 0x4e565e, 0x6a5e50], bottom: [0x1c2a44, 0x2a2a2e, 0x3a3428], k: .85, guns: ['preacher'], ranged: .25, att: ['bag'] },
-  sweeper: { rigs: ['male_lo', 'suit_lo', 'male_lo'], top: [0x22261e, 0x1e201c], bottom: [0x1c1e1a, 0x1a1a1c], k: .92, guns: ['patriot15', 'patriot15', 'kalash', 'riot'], ranged: 1, att: ['helmet', 'vest'] },
+  // v23 dressed bodies join in (worn as modelled, after they stream in; until then build() falls back to the boot-set bodies):
+  // utility crews in hard hats for the Watch, drifters and hoodies for the crews and looters, uniformed police and the odd
+  // dark suit for the Council. The cop is a full-detail model: phones never stream it, so there it's a plain Sweeper
+  watch: { rigs: ['male_lo', 'worker_lo', 'female_lo', 'civilian_lo', 'worker_lo'], top: [0xd8561a, 0xc84a12, 0xe0661e], bottom: [0x2a3550, 0x3a3428, 0x2a2e36], k: .82, guns: ['riot', 'riot', 'longshot', 'preacher', 'warden9'], ranged: 1, att: ['cap'] },
+  eastline: { rigs: ['male_lo', 'civilian_lo', 'female_lo', 'drifter_lo', 'suit_lo', 'hoodie'], top: [0xc8a414, 0xb89410, 0xd2ae1c], bottom: [0x141418, 0x1c1c22, 0x22201c], k: .82, guns: ['vexor', 'vexor', 'preacher', 'kalash', 'bubblegum'], ranged: .8, att: ['band'] },
+  rails: { rigs: ['male_lo', 'civilian_lo', 'female_lo', 'drifter_lo', 'suit_lo', 'hoodie'], top: [0x23743a, 0x1e6432, 0x2a8444], bottom: [0x141418, 0x1c1c22, 0x26241e], k: .82, guns: ['vexor', 'kalash', 'preacher', 'kalash', 'ember'], ranged: .8, att: ['band'] },
+  looter: { rigs: ['civilian_lo', 'hoodie', 'female_lo', 'hoodie', 'drifter_lo'], top: [0x6a6a70, 0x5e5862, 0x4e565e, 0x6a5e50], bottom: [0x1c2a44, 0x2a2a2e, 0x3a3428], k: .85, guns: ['preacher', 'preacher', 'warden9'], ranged: .25, att: ['bag'] },
+  sweeper: { rigs: ['male_lo', 'cop', 'male_lo', 'cop', 'suitman_lo'], top: [0x22261e, 0x1e201c], bottom: [0x1c1e1a, 0x1a1a1c], k: .92, guns: ['patriot15', 'patriot15', 'kalash', 'riot', 'venom'], ranged: 1, att: ['helmet', 'vest'] },
 };
 const HUMAN = { purger: 1, watch: 1, crew: 1, looter: 1, sweeper: 1 }, SUPER = { demon: 1, vampire: 1, shifter: 1, reptile: 1, witch: 1 };
-const HEAVY_GUN = { kalash: 1, patriot15: 1, riot: 1, longshot: 1 };
+const HEAVY_GUN = { kalash: 1, patriot15: 1, riot: 1, longshot: 1, ember: 1, venom: 1 };
 // the pieces: one geometry and one material per kind (and per crew colour), built on first use. Sized for a ~23 cm head.
 const FATT = { geo: {}, mat: {} };
 function fattMerge(parts) { // [geometry, x, y, z, colour] → one non-indexed geometry with vertex colours
@@ -95,11 +105,13 @@ function fattach(e, kind) {
     else if (kind === 'bag') mesh.position.set(0, .12, .2); else { mesh.position.set(0, .12, 0); mesh.scale.set(1.08, .78, 1.02); }
     return;
   }
-  const m = R.model, hb = findBone(m, 'head'), ht = findBone(m, 'headtopend'), sp = R.spine || R.hips; if (!hb || !sp) return;
-  R.root.updateMatrixWorld(true); const a = hb.getWorldPosition(new T.Vector3()), b = ht ? ht.getWorldPosition(new T.Vector3()) : a.clone().setY(a.y + .22), L = clamp(b.y - a.y, .15, .3), s = sp.getWorldPosition(new T.Vector3());
-  let bone = hb, k = L / .22;
+  const m = R.model, hb = findBone(m, 'head'), ht = findBone(m, 'headtopend'), sp = R.spine || R.hips, D = CHARS[R.glb]; if (!hb || !sp) return;
+  R.root.updateMatrixWorld(true); const a = hb.getWorldPosition(new T.Vector3()), b = ht ? ht.getWorldPosition(new T.Vector3()) : a.clone().setY(a.y + .22);
+  if (!ht && D.rig === 'tr2') { b.y = R.root.getWorldPosition(new T.Vector3()).y + D.h * R.root.scale.y - (D.hood || 0); a.y = b.y - .15 * D.h / 1.8; } // tr2's head bone sits low on the neck: measure down from the crown (under a hood, the head's)
+  const L = clamp(b.y - a.y, .15, .3), s = sp.getWorldPosition(new T.Vector3());
+  let bone = hb, k = !ht && D.rig === 'tr2' ? D.h / 1.8 : L / .22; // tr2's crown is measured, not boned: size by the body
   if (kind === 'cap' || kind === 'helmet') _faP.set(a.x, a.y + L * (kind === 'cap' ? .44 : .4), (a.z + b.z) * .5); // the head-top bone sits a few cm over the crown
-  else if (kind === 'band') _faP.set(a.x, a.y - L * .1, a.z - .02);                                                  // the head bone is at the eyes on these rigs: under it is mouth and chin
+  else if (kind === 'band') _faP.set(a.x, a.y - L * .1, a.z - (D.rig === 'tr2' ? .06 : .02));                       // the head bone is at the eyes on these rigs: under it is mouth and chin (tr2's sits at the back of the neck: the face is further forward)
   else { bone = sp; k = (CHARS[R.glb].h || 1.8) / 1.8; _faP.set(a.x, s.y + (kind === 'bag' ? .02 : .05), s.z + (kind === 'bag' ? .19 : -.02)); }
   rigAttach(R, bone, mesh, _faP).scale.multiplyScalar(k);
 }
@@ -299,7 +311,10 @@ class Enemy {
       if (type === 'sweeper') { o.visor = 1; o.hair = 'buzz'; o.gender = 'm'; this.armor = .45; }
       this.rig = pick(L.rigs); if (this.rig === 'female_lo') o.gender = 'f';
       this.ranged = Math.random() < (opts && opts.ranged !== undefined ? opts.ranged : L.ranged);
-      if (this.ranged) { this.gunId = pick(L.guns); this.wst = NPC_WEAP[this.gunId] || null; this.heavyGun = !!HEAVY_GUN[this.gunId]; }
+      if (this.ranged) { // a gun outside the boot arsenal only once its model is in (desktops stream them all; a phone, the ones you've carried)
+        const gl = L.guns.filter(g => MODEL_CORE.includes(g) || (MODELS[g] && MODELS[g].scene));
+        this.gunId = pick(gl.length ? gl : L.guns); this.wst = NPC_WEAP[this.gunId] || null; this.heavyGun = !!HEAVY_GUN[this.gunId];
+      }
       this.st.hold = this.ranged ? 'pistol' : 'melee';
       if (opts && opts.post) { this.post = opts.post; this.home = opts.home ? opts.home.clone() : this.pos.clone(); this.homeN = opts.homeN || null; this.postObj = opts.postObj || null; }
       else if (type === 'looter') { this.home = (opts && opts.home ? opts.home : this.pos).clone(); this.homeN = (opts && opts.homeN) || null; }
@@ -331,12 +346,12 @@ class Enemy {
   build() {
     const type = this.type; let R = null; buildsNow().n++;
     if (this.human && type !== 'purger') { // a crowd body, recoloured, with the faction's pieces on it
-      const L = FLOOK[this.fac], id = CHARS_READY && [this.rig, ...L.rigs].find(k => CHARS[k] && CHARS[k].scene);
+      const L = FLOOK[this.fac], id = CHARS_READY && [this.rig, ...L.rigs].find(rigReady);
       R = id ? makeGLBRig(id) : null;
       if (R) { customizeGLB(R, { skin: this.o.skin, hairCol: this.o.hairCol, top: this.o.top, bottom: this.o.bottom, accent: this.o.accent, k: L.k }); for (const ms of R.meshes) { const u = ms.material.userData.rim; if (u) { u.c.value.set(FACTIONS[this.fac].color); u.k.value = .42; } } }
     } else { const glb = CHARS_READY && ENEMY_NEEDS[type].every(id => CHARS[id].scene); R = glb ? makeGLBRig(ENEMY_GLB[type]) : null; } // half a set (a failed beast) would leave a broken transform: box rig instead
     this.R = R || makeRig(this.o);
-    if (this.human && FLOOK[this.fac]) for (const k of FLOOK[this.fac].att) fattach(this, k);
+    if (this.human && FLOOK[this.fac]) { const dr = this.R.glb && CHARS[this.R.glb].dressed; for (const k of FLOOK[this.fac].att) if (!dr || k === 'band' || k === 'bag') fattach(this, k); } // a dressed body keeps its own hat, hard hat or uniform: only the crew's bandana and the looter's bag go on top
     this.R.root.scale.setScalar(this.scale); this.hH = this.R.glb ? charHeadY(this.R.glb) : 1.68;
     if (this.human) this.attachWeapon(this.ranged ? 'gun' : type === 'looter' ? 'crowbar' : 'bat');
     if (type === 'witch') this.attachWeapon('staff');

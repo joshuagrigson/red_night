@@ -161,7 +161,7 @@ function openChar() {
   G.state = 'char'; show('mTitle', false); show('mChar', true); pvMount('charPv'); charChanged();
 }
 function charChanged() {
-  store('char', G.char);
+  charFit(); store('char', G.char);
   document.querySelectorAll('[data-g]').forEach(b => b.classList.toggle('sel', b.dataset.g === G.char.gender));
   [...$('skinSw').children].forEach((b, i) => b.classList.toggle('sel', i === G.char.skin));
   { const mm = maskMode(), nm = neonMode(); const lab = $('hairSw').previousElementSibling; if (lab) lab.textContent = nm ? 'Hair & neon' : mm ? 'Mask color' : CHARS_READY && playerGLBId() === 'witch' ? 'Hair & eyes' : 'Hair color';
@@ -170,16 +170,17 @@ function charChanged() {
       if (nm) { b.style.background = `linear-gradient(135deg, ${hx(HAIR_COLS[i])} 50%, ${hx(MASK_COLS[i])} 50%)`; b.style.boxShadow = '0 0 10px ' + hx(MASK_COLS[i]); b.ariaLabel = 'Hair and neon color ' + (i + 1); return; }
       const c = (mm ? MASK_COLS : HAIR_COLS)[i]; b.style.background = hx(c); b.style.boxShadow = mm ? '0 0 10px ' + hx(c) : ''; b.ariaLabel = (mm ? 'Mask color ' : 'Hair color ') + (i + 1); }); }
   [...$('hairOpts').children].forEach(b => b.classList.toggle('sel', b.dataset.hair === G.char.hair));
-  [...$('fitOpts').children].forEach(b => b.classList.toggle('sel', b.dataset.fit === G.char.outfit));
+  [...$('fitOpts').children].forEach(b => { b.classList.toggle('sel', b.dataset.fit === G.char.outfit); b.hidden = G.char.gender === 'f' && !!OUTFITS[b.dataset.fit].male; });
   const o = OUTFITS[G.char.outfit];
   const hairRow = $('hairOpts').closest('.opt'); if (hairRow) hairRow.hidden = !!CHARS_READY; // the scanned models have fixed hairstyles
+  for (const id of ['skinSw', 'hairSw']) { const r = $(id).closest('.opt'); if (r) r.hidden = !!o.dressed; } // a dressed outfit is worn as modelled: no skin or hair picks
   const glb = CHARS_READY && makeGLBRig(playerGLBId());
   if (glb) {
     customizeGLB(glb, playerCust()); glb.st = { speed: 0, phase: 0, hold: 'none', t: 0 };
     const gun = buildWeapon(W.preacher, cfgOf('preacher'), true); const holder = new T.Group(); gun.g.rotation.x = -Math.PI / 2; gun.g.position.set(0, -.02, .01); holder.add(gun.g); const mount = attachToBone(glb.rArm.hand, holder, 0, 0, Math.PI); glb.gunMount = { g: mount, mode: 'tpp' };
     PV.rig = glb; pvSet(glb.root, 'char'); return;
   }
-  const rig = makeRig({ gender: G.char.gender, skin: SKINS[G.char.skin], hair: G.char.hair, hairCol: HAIR_COLS[G.char.hairCol], top: o.top, bottom: o.bottom, accent: o.accent, sleeve: 1, visor: o.visor, leather: G.char.outfit !== 'corpo', collar: G.char.outfit === 'corpo' });
+  const rig = makeRig({ gender: G.char.gender, skin: o.skin !== undefined ? o.skin : SKINS[G.char.skin], hair: G.char.hair, hairCol: HAIR_COLS[G.char.hairCol], top: o.top, bottom: o.bottom, accent: o.accent, sleeve: 1, visor: o.visor, leather: G.char.outfit !== 'corpo', collar: G.char.outfit === 'corpo' });
   rig.st = { speed: 0, phase: 0, hold: 'none', t: 0 };
   // a pistol in hand for the pose
   const gun = buildWeapon(W.preacher, cfgOf('preacher'), true); gun.g.rotation.x = -Math.PI / 2; gun.g.position.set(0, -.07, -.02); rig.rArm.hand.add(gun.g);

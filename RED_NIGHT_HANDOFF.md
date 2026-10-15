@@ -1,7 +1,7 @@
 # Red Night: handoff for Claude Code
 
 **For:** Claude Code. Joshua wants the code reviewed and improved: performance, polish and bugs.
-**Live build:** https://claude.ai/artifact/7ti2u8WeK1PpiHHHTZ8bw9 (version 21, 2026-10-15; v20 was 2026-10-14)
+**Live build:** https://claude.ai/artifact/7ti2u8WeK1PpiHHHTZ8bw9 (v23, 2026-10-15; v22 shipped earlier the same day as artifact version 24)
 **Repo:** github.com/joshuagrigson/red_night, branch `claude/inspiring-euler-4ewuw9` (v20 baseline is commit `b13e661`)
 **Source:** `red-night-source.zip`, next to this file in Downloads. It holds the code, tools, test scripts and optimized assets.
 **Raw Tripo exports:** `~/Downloads/rn_*.glb`. Re-run calibration from these.
@@ -12,7 +12,7 @@ A GTA-style night shooter set during a "Purge night", in a Gotham / Cyberpunk lo
 
 - **Controls:** Call of Duty style. First-person and third-person views, swappable, with shoulder swap.
 - **City:** four districts, Cairo, Sacramento, Texarkana and Salem.
-- **Enemies:** purgers (a hacker gang), demons, vampires, shapeshifters, reptilians and witches.
+- **Enemies:** purgers (a hacker gang) and four human factions that also fight each other (v22); demons, vampires, shapeshifters, reptilians and witches are a setting (Monsters: off, rare by default, classic).
 - **Device:** it must run on an iPhone inside the Claude app, so mobile performance is the top constraint.
 - **Tech:** three.js r128, loaded from cdnjs and jsdelivr. Everything else is vanilla JS concatenated into one HTML page.
 
@@ -29,13 +29,30 @@ cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
 - **Why the `.glb.txt` files:** the artifact host serves `.txt` but not `.glb`, so every GLB ships as base64 text. Loaders call `fetch(url + '.txt')`, then `atob`, then `GLTFLoader.parse`.
 - **Publishing:** the page is `dist/red-night.html`. Assets are published alongside it under `assets/...`.
   - A publish adds or replaces only the files it sends; it never deletes the rest.
-  - The artifact holds 173 files (v21 added `assets/sky/clouds.jpg`, `street_env.jpg`, `hero.jpg`).
+  - The artifact holds 189 files (v21 added `assets/sky/clouds.jpg`, `street_env.jpg`, `hero.jpg`; v23 added 16: five guns, eight bodies, three city pieces). The local `dist/assets/fac/` also has Facade012–014 and `meta.json`, which nothing references and were never published.
   - The page declares the `downloads` capability: photo mode's Download goes through the viewer's save prompt (`phSave` in ui.js), because a plain download link does nothing inside the Claude app. Republish with the same declaration (omit `capabilities` to keep it).
   - Before a republish the Artifact tool requires a full read of the live page; it is about 6,350 lines, so read it in chunks of about 450 lines.
 - **Test scripts and scratch paths:** the Python test scripts (`*.py` at the root) are headless Playwright runs using swiftshader. They write screenshots to a hard-coded scratch path (`/tmp/claude-0/...`); change `OUT=` in each.
 - **Headless speed:** the game loop runs at about 0.05× real time headless. AI tests step update functions directly, with `requestAnimationFrame` stubbed.
 
-## v21: what changed (read this first)
+## v23: what changed (read this first)
+
+New assets from Joshua's Tripo models (Drive folder "Red Night models"):
+- **Five guns** (`opt/rn_*.glb`, `MODELS` + `WDEF` + `CLS`): Warden 9 (optic-ready pistol), Sovereign (gilded .50 hand cannon), Bubblegum Vex (pink Vector-style PDW), Ember Breacher (semi-auto shotgun), Venom (LMG). Sovereign, Ember and Venom have solid sight blocks with no notch, so `builtinDot` is on and their `sight` anchor sits ~1.2 cm over the block (measured: the tallest geometry in front of the sight near the centre line). Ember and Venom are chunky: `len` .82 and .9.
+- **Eight bodies on a second Tripo rig ("tr2")**: `suitman`, `drifter`, `hoodie`, `cop`, `worker` and crowd versions `suitman_lo`, `drifter_lo`, `worker_lo`. See Characters below for the rig work. They are `dressed`: never recoloured (`customizeGLB` returns early).
+  - Player outfits (men only): Agent, Drifter, Scavenger, Officer, Utility. The creator hides them for the female body (`charFit` resets to Cybergang) and hides the skin and hair rows for them. First-person arms take `OUTFITS[x].skin`.
+  - Factions (`FLOOK`): utility crews for Block Watch, drifters and hoodies for the crews and looters, police and a dark suit for the Sweepers. Dressed bodies skip cap, helmet and vest; they keep the crew bandana and the looter bag. Until a dressed body has streamed and baked (`rigReady`), the boot-set bodies stand in. Phones never stream the 44k-triangle cop.
+  - Civilians: one of each dressed crowd body in `CIV_RIGS` (about 38% of the crowd once loaded).
+- **Three city pieces** (`LMS.tenement`, `shops`, `chrome`; `placeCity` in landmarks.js): a brick tenement backed by a row of shops (fictional signs painted over the real brand marks) in two Texarkana blocks, and the chrome house in a Sacramento block. `buildCity` generates those blocks as usual and then rolls them back (`heroSnap`/`heroRollback`: styles, boxes and their grid cells, lights, signs, trims, clutter, roofs, domes, facade detail, skyscraper parts), so every other block keeps its random draws: the rest of the city is identical to v22 (checked: 6 buildings removed, all inside the hero blocks, none added). A block that rolls a park keeps the park.
+- **Fixed for every baked body:** corpses stood back up when the death clip ended (`ONESHOT`, see Characters).
+
+## v22: what changed
+
+- Four human factions besides the purgers (Block Watch, Eastline and Rail Kings crews, Looters, Council Sweepers) that fight each other as well as the player; grudges; NPC kills don't score. Monsters are a setting (off / rare, the default / classic).
+- Phone controls decluttered: real turning (a 280 px swipe is about 180°), drags from buttons turn the view, weapon panel tap vs hold.
+- A crew or looter mid-fight with someone else ignores a quiet player unless he's within 3 m (`busy` in `fighterScan`).
+
+## v21: what changed
 
 **Direction.** The city is realistic first: sodium streetlights, lit windows in real palettes, wet asphalt, a blood moon behind real clouds (Poly Haven HDRIs cut by `tools/hdriprep.py` into `assets/sky/clouds.jpg`, `street_env.jpg`, `hero.jpg`). The cyberpunk is a layer on top, the **Augment dial** `G.aug` (0..1, default .35, saved as `rn_aug`):
 - Settings → Augment sets it; **N** tips the layer in or out with a tilt animation (the Window weather app's code overlay).
@@ -111,7 +128,12 @@ cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
 
 ## Characters (`src/chars.js`)
 
-- **Rigs:** every character is a Tripo text-to-3D model with an auto-rigged Mixamo skeleton (52 joints used).
+- **Rigs:** most characters are Tripo text-to-3D models with an auto-rigged Mixamo skeleton (52 joints used). v23's people use Tripo's newer rig ("tr2", `CHARS[id].rig`):
+  - Bone names `Hip`, `Waist`, `Spine01`, `L_Upperarm`… map onto the Mixamo keys through `BONE_ALIAS` inside `boneKey`; twist bones, `Pelvis` and `NeckTwist02` have no counterpart and ride their parents. No fingers: `aimOverlay` seats the gun a fifth of a forearm past the wrist. No head-top bone: `charHeadY` and the faction pieces measure down from the model's top (`def.top`; `hood` offsets the hoodie).
+  - The root is turned -90° about X, so the hips' parent frame is Z-up: the hips translation is sampled in world space (`C.hw`): the library hips' displacement from rest, scaled by hip height, converted into the hips' parent space. Walk and run stay in place.
+  - The rest pose is an A-pose or a loose T: `restSwing` turns the library's rest direction of each bone onto this model's, so poses match instead of rotations.
+  - Tripo fused the hands to the hips where they touched (drifter, drifter_lo, cop) and smeared arm weight into the hair of every tr2 body. `tools/handcut.cjs` repairs a GLB in place: in the hand–thigh contact zone each vertex goes to the surface its normal faces away from, cross weights are stripped, and the triangles still joining hand and hip are cut; the head column above the head bone loses all arm weight.
+- **`ONESHOT` (v23 fix):** clips that play once (die, fall, hit, slash, punch, cast) are sampled with `LoopOnce` in `bakeClip`. On a looping action the sample at t = duration wraps to frame 0, so every baked body's last death frame was its first pose.
 - **Animation:** one shared library lives in `assets/anims.glb` (the female model plus all clips).
   - `clipsFor(id)` bakes a world-space retarget per character: `D = Wsrc_anim·inv(Wsrc_rest); Wt = D·Wt_rest`, sampled at 30 fps.
   - All characters are baked at boot.
@@ -124,8 +146,9 @@ cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
   | Hacker | `hackm` | `hackf` |
   | Nomad | `nomadm` | `nomadf` |
   | Corporate | `corpom` | `corpof` |
+  | Agent / Drifter / Scavenger / Officer / Utility (v23) | `suitman` / `drifter` / `hoodie` / `cop` / `worker` | — |
 
-  `PLAYER_FALLBACK` is used if a model fails to load.
+  `PLAYER_FALLBACK` stands in while an outfit streams in (the dressed outfits borrow `male_lo`, already in from boot).
 - **`customizeGLB` recolor shader:** one `onBeforeCompile` with height bands (head > .85, legs < .47, feet < .07) and HSV skin detection. Modes come from the `cMask` uniform:
 
   | `cMask` | Look | What gets recolored |
@@ -147,7 +170,7 @@ cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
 
 ## Weapons pipeline (`src/data.js` → `MODELS`)
 
-All 35 weapons now have Tripo meshes. 24 were new in v19. The loading and calibration steps:
+All 40 weapons have Tripo meshes (24 new in v19, 5 in v23). The loading and calibration steps:
 
 1. **Optimize:** `tools/gunopt.sh id…` turns `raw/rn_<id>.glb` into `opt/rn_<id>.glb` (meshopt, webp 1024, no simplify).
 2. **Calibrate:** `align.py` and `anchors.py`, driven by `SPEC=spec_x.json AOUT=anchors_x.json python3 anchors.py`, load `dist/raw/<file>`.
@@ -179,9 +202,11 @@ All 35 weapons now have Tripo meshes. 24 were new in v19. The loading and calibr
 5. **Viewmodel hand placement** on the 24 new guns comes from auto anchors and has only been spot-checked in headless shots. Check the hands on every gun in first person, aim-down-sights and third person, and nudge `anchors.grip`/`sup` in `MODELS`.
 6. ~~Karambit & Dagger~~: fixed in v21. The off-hand is its own `dagger` weapon (`W[s.w.offhand]`).
 7. **Long-coat rule:** `playerCust()` still carries the `long` rule (bottom = top for `vampire`/`witch`), which is only used by the fallbacks now. The mode-1 and mode-2 code paths are fallback-only for the player; enemies don't use `customizeGLB`.
-8. **Headless realism:** time runs at 0.05×, so any timing-based test (reloads, AI reaction) must step update functions manually.
+8. **Headless realism:** time runs at 0.05×, so any timing-based test (reloads, AI reaction, firing, aim-down-sights) must step update functions manually (`updatePlayer(dt)` for the player).
 9. **AI and gameplay ideas.** v21 shipped frags, fleeing civilians, gang cars and HEAT. Still open:
    - real CoD reload animations (the current ones are procedural transforms).
+   - v24 (planned): hit realism. Staged assets are in `staging/` (UAL Pro animation packs, CC0 sound effects, research notes); the README there says what must be true before they ship (LoopOnce sampling, now done; lazy baking).
+10. **v23 looks to watch:** the storefront model's back wall is a blurry collage (only seen from its alley); the Ember still reads big at the hip; dressed bodies are identical copies (one of each in the crowd mix for that reason); the T-pose bodies' off hand sits palm-down under the gun when aiming.
 
 ## Conventions Joshua expects
 

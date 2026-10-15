@@ -160,42 +160,62 @@ function buildCity() {
     return out;
   }
 
+  // v23: a few ordinary blocks become modelled buildings (landmarks.js placeCity). Each is generated as usual and then rolled
+  // back, so every later block keeps the random draws it always had: the rest of the city stays exactly where it was
+  const HERO = new Map(), Q = Math.PI / 2;
+  if (cityReady('tenement', 'shops')) { // Texarkana: a brick tenement and a row of shops back to back across an alley
+    HERO.set(blockKey(8, 6), [['tenement', 93.2, 20, 23.5, -Q], ['shops', 109.4, 20, 21.5, Q]]);
+    HERO.set(blockKey(10, 9), [['tenement', 180, 133.2, 23.5, Math.PI], ['shops', 180, 149.4, 21.5, 0]]);
+  }
+  if (cityReady('chrome')) HERO.set(blockKey(8, 4), [['chrome', 100, -60, 26, 0]]); // Sacramento: the chrome house, facing the centre
+  const heroSnap = () => ({ st: Object.fromEntries(Object.keys(STYLES).map(k => [k, STYLES[k].list.length])), box: BOX.length, ls: LS.length, kids: scene.children.length, trim: trimGroups.length, clutter: clutter.length, roofs: roofs.length, domes: domes.length, fd: Object.fromEntries(Object.keys(FD).map(k => [k, FD[k].length])), sky: Object.fromEntries(Object.keys(SKY.parts).map(k => [k, SKY.parts[k].length])), skyT: SKY.trims.length, skyB: SKY.beacons.length });
+  function heroRollback(S) {
+    for (const k in STYLES) STYLES[k].list.length = S.st[k] || 0;
+    for (const b of BOX.splice(S.box)) for (let i = Math.floor(b.x0 / CELL); i <= Math.floor(b.x1 / CELL); i++) for (let j = Math.floor(b.z0 / CELL); j <= Math.floor(b.z1 / CELL); j++) { const c = grid.get(gk(i, j)); const n = c ? c.indexOf(b) : -1; if (n >= 0) c.splice(n, 1); }
+    LS.length = S.ls; for (const o of scene.children.slice(S.kids)) { scene.remove(o); if (o.geometry) o.geometry.dispose(); } // its signs and their street glow
+    trimGroups.length = S.trim; clutter.length = S.clutter; roofs.length = roofCols.length = S.roofs; domes.length = domeCols.length = S.domes;
+    for (const k in FD) FD[k].length = S.fd[k] || 0;
+    for (const k in SKY.parts) SKY.parts[k].length = S.sky[k] || 0; SKY.trims.length = S.skyT; SKY.beacons.length = S.skyB;
+  }
   for (let i = 0; i < 12; i++) for (let j = 0; j < 12; j++) {
     if (reserved.has(blockKey(i, j))) continue;
-    let x0 = -HALF + i * CW + 6, x1 = x0 + 28, z0 = -HALF + j * CW + 6, z1 = z0 + 28;
-    const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, d = districtAt(cx, cz);
-    const center = Math.abs(cx) < 70 && Math.abs(cz) < 70;
-    if (d === 1 && z1 < 0) { if (i === 10) x1 = 186; if (i === 11) x0 = 214; }
-    if (srand() < .07 && !center) { if (PROPS.shrub_02 && srand() < .6) park(x0, x1, z0, z1, d); else plaza(x0, x1, z0, z1, d); continue; }
-    if (center) { for (const L of lots(x0, x1, z0, z1, srand() < .5 ? 1 : 2)) { if (FAC.ok) skyscraper(L[0], L[1], L[2], L[3], sr(70, 140), d); else building('neon', L[0], L[1], L[2], L[3], sr(45, 110)); } continue; }
-    if (d === 0) { // Cairo
-      for (const L of lots(x0, x1, z0, z1, srand() < .6 ? 4 : 2)) {
-        const h = sr(8, 26); building('stone', L[0], L[1], L[2], L[3], h);
-        if (srand() < .3) domes.push([(L[0] + L[1]) / 2, h, (L[2] + L[3]) / 2, Math.min(L[1] - L[0], L[3] - L[2]) * .38]), domeCols.push(new T.Color(spick([0x2a9a8a, 0xc9a24a, 0x3a6aa0])));
-        if (srand() < .5) { clutter.push([L[0], 0, h, L[2], L[1] - L[0], .8, .3]); }
+    const hero = HERO.get(blockKey(i, j)), snap = hero ? heroSnap() : null; let openLot = false;
+    try {
+      let x0 = -HALF + i * CW + 6, x1 = x0 + 28, z0 = -HALF + j * CW + 6, z1 = z0 + 28;
+      const cx = (x0 + x1) / 2, cz = (z0 + z1) / 2, d = districtAt(cx, cz);
+      const center = Math.abs(cx) < 70 && Math.abs(cz) < 70;
+      if (d === 1 && z1 < 0) { if (i === 10) x1 = 186; if (i === 11) x0 = 214; }
+      if (srand() < .07 && !center) { openLot = true; if (PROPS.shrub_02 && srand() < .6) park(x0, x1, z0, z1, d); else plaza(x0, x1, z0, z1, d); continue; }
+      if (center) { for (const L of lots(x0, x1, z0, z1, srand() < .5 ? 1 : 2)) { if (FAC.ok) skyscraper(L[0], L[1], L[2], L[3], sr(70, 140), d); else building('neon', L[0], L[1], L[2], L[3], sr(45, 110)); } continue; }
+      if (d === 0) { // Cairo
+        for (const L of lots(x0, x1, z0, z1, srand() < .6 ? 4 : 2)) {
+          const h = sr(8, 26); building('stone', L[0], L[1], L[2], L[3], h);
+          if (srand() < .3) domes.push([(L[0] + L[1]) / 2, h, (L[2] + L[3]) / 2, Math.min(L[1] - L[0], L[3] - L[2]) * .38]), domeCols.push(new T.Color(spick([0x2a9a8a, 0xc9a24a, 0x3a6aa0])));
+          if (srand() < .5) { clutter.push([L[0], 0, h, L[2], L[1] - L[0], .8, .3]); }
+        }
+      } else if (d === 1) { // Sacramento
+        for (const L of lots(x0, x1, z0, z1, srand() < .55 ? 1 : 2)) {
+          const hh = sr(25, 95), st = srand() < .7 ? 'glass' : 'neon';
+          if (hh > 60 && FAC.ok && L[1] - L[0] > 12 && L[3] - L[2] > 12) { skyscraper(L[0], L[1], L[2], L[3], hh * 1.2, d); continue; }
+          if (hh > 50 && srand() < .7 && L[1] - L[0] > 12 && L[3] - L[2] > 12) { // wedding-cake setbacks
+            const h1 = hh * sr(.45, .6), h2 = hh * sr(.75, .85), i1 = sr(2, 3.5), i2 = i1 + sr(1.5, 3);
+            building(st, L[0], L[1], L[2], L[3], h1);
+            building(st, L[0] + i1, L[1] - i1, L[2] + i1, L[3] - i1, h2, { nosign: true, tier: true });
+            building(st, L[0] + i2, L[1] - i2, L[2] + i2, L[3] - i2, hh, { nosign: true, tier: true });
+          } else building(st, L[0], L[1], L[2], L[3], hh);
+        }
+      } else if (d === 2) { // Texarkana
+        for (const L of lots(x0, x1, z0, z1, srand() < .5 ? 4 : 2)) building(srand() < .85 ? 'brick' : 'white', L[0], L[1], L[2], L[3], srand() < .1 ? sr(26, 40) : sr(6, 18));
+      } else { // Salem
+        const n = srand() < .7 ? 4 : 2;
+        for (const L of lots(x0, x1, z0, z1, n)) {
+          const h = sr(6, 11); const alongX = (L[1] - L[0]) > (L[3] - L[2]);
+          building('wood', L[0], L[1], L[2], L[3], h, { notrim: srand() < .6 });
+          gable(L[0] - .4, L[1] + .4, L[2] - .4, L[3] + .4, h, sr(3, 5.5), alongX);
+          if (srand() < .5) clutter.push([(L[0] + L[1]) / 2 - .5, 0, h + 1.5, (L[2] + L[3]) / 2 - .5, 1, 3, 1]); // chimney
+        }
       }
-    } else if (d === 1) { // Sacramento
-      for (const L of lots(x0, x1, z0, z1, srand() < .55 ? 1 : 2)) {
-        const hh = sr(25, 95), st = srand() < .7 ? 'glass' : 'neon';
-        if (hh > 60 && FAC.ok && L[1] - L[0] > 12 && L[3] - L[2] > 12) { skyscraper(L[0], L[1], L[2], L[3], hh * 1.2, d); continue; }
-        if (hh > 50 && srand() < .7 && L[1] - L[0] > 12 && L[3] - L[2] > 12) { // wedding-cake setbacks
-          const h1 = hh * sr(.45, .6), h2 = hh * sr(.75, .85), i1 = sr(2, 3.5), i2 = i1 + sr(1.5, 3);
-          building(st, L[0], L[1], L[2], L[3], h1);
-          building(st, L[0] + i1, L[1] - i1, L[2] + i1, L[3] - i1, h2, { nosign: true, tier: true });
-          building(st, L[0] + i2, L[1] - i2, L[2] + i2, L[3] - i2, hh, { nosign: true, tier: true });
-        } else building(st, L[0], L[1], L[2], L[3], hh);
-      }
-    } else if (d === 2) { // Texarkana
-      for (const L of lots(x0, x1, z0, z1, srand() < .5 ? 4 : 2)) building(srand() < .85 ? 'brick' : 'white', L[0], L[1], L[2], L[3], srand() < .1 ? sr(26, 40) : sr(6, 18));
-    } else { // Salem
-      const n = srand() < .7 ? 4 : 2;
-      for (const L of lots(x0, x1, z0, z1, n)) {
-        const h = sr(6, 11); const alongX = (L[1] - L[0]) > (L[3] - L[2]);
-        building('wood', L[0], L[1], L[2], L[3], h, { notrim: srand() < .6 });
-        gable(L[0] - .4, L[1] + .4, L[2] - .4, L[3] + .4, h, sr(3, 5.5), alongX);
-        if (srand() < .5) clutter.push([(L[0] + L[1]) / 2 - .5, 0, h + 1.5, (L[2] + L[3]) / 2 - .5, 1, 3, 1]); // chimney
-      }
-    }
+    } finally { if (snap && !openLot) { heroRollback(snap); for (const [id, x, z, sc, ry] of hero) placeCity(id, x, z, sc, ry); } else if (snap) console.warn('hero block', i, j, 'rolled a park: kept'); } // a park's props and grass aren't rolled back
   }
 
   // ---- instanced buildings per style

@@ -19,14 +19,20 @@ const CHARS = {
   // ~9k-triangle crowd versions (same skeletons) so the streets can hold many more people
   civilian_lo: { url: 'assets/char_civilian_lo.glb', h: 1.66, crowd: 1 }, suit_lo: { url: 'assets/char_suit_lo.glb', h: 1.8, crowd: 1 },
   male_lo: { url: 'assets/char_male_lo.glb', h: 1.8, crowd: 1 }, female_lo: { url: 'assets/char_female_lo.glb', h: 1.7, crowd: 1 },
+  // v23 people on the second Tripo rig ('tr2': its own bone names, a Z-up root, an A- or loose T-pose rest, no fingers).
+  // Dressed as they come (a suit, a uniform, coveralls): never recoloured. The crowd versions stream in after boot.
+  suitman: { url: 'assets/char_suitman.glb', h: 1.84, rig: 'tr2', dressed: 1 }, drifter: { url: 'assets/char_drifter.glb', h: 1.8, rig: 'tr2', dressed: 1 },
+  cop: { url: 'assets/char_cop.glb', h: 1.83, rig: 'tr2', dressed: 1 }, worker: { url: 'assets/char_worker.glb', h: 1.8, rig: 'tr2', dressed: 1 },
+  hoodie: { url: 'assets/char_hoodie.glb', h: 1.78, rig: 'tr2', dressed: 1, crowd: 1, late: 1, hood: .07 }, suitman_lo: { url: 'assets/char_suitman_lo.glb', h: 1.84, rig: 'tr2', dressed: 1, crowd: 1, late: 1 },
+  drifter_lo: { url: 'assets/char_drifter_lo.glb', h: 1.8, rig: 'tr2', dressed: 1, crowd: 1, late: 1 }, worker_lo: { url: 'assets/char_worker_lo.glb', h: 1.8, rig: 'tr2', dressed: 1, crowd: 1, late: 1 },
 };
 const ANIMLIB = { url: 'assets/anims.glb', clips: null, hipsRest: 1 };
 // which library clip each logical state uses
 const CLIPMAP = { idle: 'idle', walk: 'walk', run: 'run', shoot: 'shoot', slash: 'slash', punch: 'box_01', hit: 'hit_to_body_01', die: 'fall', fall: 'fall', cast: 'cast_a_spell', plead: 'frightened' };
 let CHARS_READY = false;
 // rest-pose bounds measured from the uncompressed Tripo exports (unit-normalized, feet at 0)
-const RAWB_LO = { civilian_lo: 'civilian', suit_lo: 'suit', male_lo: 'male', female_lo: 'female' };
-const RAWB = { corpom: { minY: 0, h: .9786 }, hackm: { minY: 0, h: .9806 }, hackf: { minY: 0, h: .9797 }, nomadm: { minY: 0, h: .9794 }, nomadf: { minY: 0, h: .9795 }, corpof: { minY: 0, h: .9822 }, female: { minY: 0, h: .9803 }, purger: { minY: 0, h: .9797 }, demon: { minY: 0, h: .9793 }, vampire: { minY: 0, h: .9792 }, reptile: { minY: 0, h: .965 }, witch: { minY: 0, h: .9805 }, beast: { minY: 0, h: .9661 }, suit: { minY: 0, h: .9801 }, male: { minY: 0, h: .9799 }, civilian: { minY: 0, h: .9785 } };
+const RAWB_LO = { civilian_lo: 'civilian', suit_lo: 'suit', male_lo: 'male', female_lo: 'female', suitman_lo: 'suitman', drifter_lo: 'drifter', worker_lo: 'worker' };
+const RAWB = { suitman: { minY: 0, h: 1 }, drifter: { minY: 0, h: .978 }, hoodie: { minY: 0, h: 1 }, cop: { minY: 0, h: .978 }, worker: { minY: 0, h: 1 }, corpom: { minY: 0, h: .9786 }, hackm: { minY: 0, h: .9806 }, hackf: { minY: 0, h: .9797 }, nomadm: { minY: 0, h: .9794 }, nomadf: { minY: 0, h: .9795 }, corpof: { minY: 0, h: .9822 }, female: { minY: 0, h: .9803 }, purger: { minY: 0, h: .9797 }, demon: { minY: 0, h: .9793 }, vampire: { minY: 0, h: .9792 }, reptile: { minY: 0, h: .965 }, witch: { minY: 0, h: .9805 }, beast: { minY: 0, h: .9661 }, suit: { minY: 0, h: .9801 }, male: { minY: 0, h: .9799 }, civilian: { minY: 0, h: .9785 } };
 
 function parseGLBText(loader, url) {
   return fetch(url + '.txt').then(r => { if (!r.ok) throw 0; return r.text(); }).then(b64 => new Promise((res, rej) => {
@@ -49,14 +55,18 @@ function shrinkTextures(root, max) {
   });
 }
 
-const boneKey = n => n.replace(/^mixamorig[:_]?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
+// the tr2 rig's bone names, as the Mixamo keys everything else asks for (twist bones, the pelvis and the second neck
+// bone have no counterpart: they ride their parents)
+const BONE_ALIAS = { hip: 'hips', waist: 'spine', spine01: 'spine1', spine02: 'spine2', necktwist01: 'neck' };
+for (const [s, S] of [['l', 'left'], ['r', 'right']]) Object.assign(BONE_ALIAS, { [s + 'clavicle']: S + 'shoulder', [s + 'upperarm']: S + 'arm', [s + 'forearm']: S + 'forearm', [s + 'hand']: S + 'hand', [s + 'thigh']: S + 'upleg', [s + 'calf']: S + 'leg', [s + 'foot']: S + 'foot', [s + 'toebase']: S + 'toebase' });
+const boneKey = n => { const k = n.replace(/^mixamorig[:_]?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase(); return BONE_ALIAS[k] || k; };
 function findBone(root, key) { let b = null; root.traverse(o => { if (!b && o.isBone && boneKey(o.name) === key) b = o; }); return b; }
 // Boot loads only what the title, the creator's current look and the first street need: the animation library (it is
 // also the female model), the saved player model and its fallback, the crowd and purgers. Everything else streams in
 // after init, two at a time, in the order the night unlocks it; anything asked for early (a spawn, an outfit pick) jumps the queue.
 const CSTREAM = { q: [], on: false };
-const charWanted = () => (PLAYER_MODELS[G.char.gender] || PLAYER_MODELS.m)[G.char.outfit] || 'male';
-function charBootSet() { const mine = charWanted(); return [...new Set(['female', mine, PLAYER_FALLBACK[mine], 'purger', ...Object.keys(CHARS).filter(id => CHARS[id].crowd)])].filter(id => CHARS[id]); }
+const charWanted = () => (PLAYER_MODELS[G.char.gender] || PLAYER_MODELS.m)[G.char.outfit] || (G.char.gender === 'f' ? 'female' : 'male');
+function charBootSet() { const mine = charWanted(); return [...new Set(['female', mine, PLAYER_FALLBACK[mine], 'purger', ...Object.keys(CHARS).filter(id => CHARS[id].crowd && !CHARS[id].late)])].filter(id => CHARS[id]); }
 function loadChars() {
   if (!T.GLTFLoader || !T.SkeletonUtils) return Promise.resolve();
   const loader = new T.GLTFLoader(); if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
@@ -89,6 +99,8 @@ function charStreamOrder() {
   // (setSupernatural queues them if that changes). Less to download and hold on a phone for the hours they can't turn up
   const unl = t => { for (let h = 0; h < 9; h++) if (spawnTable(-1, h)[t] >= 1) return h; return 9; }, h0 = spawnTable(-1, 0);
   const ids = []; for (const t of Object.keys(ENEMY_NEEDS).sort((a, b) => unl(a) - unl(b) || h0[b] - h0[a])) if (!SUPER[t] || G.supernatural === 'classic') ids.push(...ENEMY_NEEDS[t]);
+  // the dressed crowd (and, off phones, the sweepers' uniform): until they land, people wear the boot-set bodies
+  ids.push(...Object.keys(CHARS).filter(id => CHARS[id].late)); if (!LOWMEM) ids.push('cop');
   // then the outfits, this body first. Phones keep only what the night needs in memory: their other outfits load when picked.
   if (!LOWMEM) { for (const g of G.char.gender === 'f' ? ['f', 'm'] : ['m', 'f']) for (const o in PLAYER_MODELS[g]) ids.push(PLAYER_MODELS[g][o]); ids.push(...Object.keys(CHARS)); }
   return [...new Set(ids)].filter(id => CHARS[id]);
@@ -103,6 +115,9 @@ function charStreamNext() {
 // enemy types whose models are still on the way (a shifter turns into the beast, the reptilian's suit into the reptile)
 const enemyPending = type => CHARS_READY && (ENEMY_NEEDS[type] || []).some(id => !CHARS[id].failed && !(CHARS[id].scene && CHARS[id].clips));
 function wantEnemy(type) { for (const id of ENEMY_NEEDS[type] || []) ensureChar(id); }
+// can a crowd or faction body be built right now: in, and (for v23's dressed bodies, which stream in after boot) already
+// baked, so picking one never bakes its clips mid-frame
+const rigReady = k => !!(CHARS[k] && CHARS[k].scene && (CHARS[k].clips || !CHARS[k].dressed));
 function charArrived(id) {
   if (CHARS_READY && CHARS[id].scene) bakeSoon(id);
   if (id !== charWanted()) return;
@@ -141,7 +156,7 @@ function prepChar(id, gl) {
   if (rb) { size = new T.Vector3(1, rb.h, 1); minY = rb.minY; }
   else { let lo = 1e9, hi = -1e9; const v = new T.Vector3(); sc.traverse(o => { if (o.isBone) { o.getWorldPosition(v); lo = Math.min(lo, v.y); hi = Math.max(hi, v.y); } }); size = new T.Vector3(1, Math.max(.01, (hi - lo) * 1.04), 1); minY = lo; }
   const box = { min: { y: minY } };
-  def.k = def.h / Math.max(.01, size.y); def.minY = box.min.y; def.scene = sc;
+  def.k = def.h / Math.max(.01, size.y); def.minY = box.min.y; def.top = minY + size.y; def.scene = sc;
   const hips = findBone(sc, 'hips'); def.hipsRest = hips ? hips.position.length() : 1;
   def.hipsName = hips ? hips.name : null;
   // the model's forward: glTF characters face +Z; our actors face -Z
@@ -162,17 +177,40 @@ const RT = {};
 function retargetSrc() {
   if (RT.src) return RT.src;
   const s = T.SkeletonUtils.clone(CHARS.female.scene); s.updateMatrixWorld(true);
-  const bones = {}, rest = {}; s.traverse(o => { if (o.isBone) { const k = boneKey(o.name); bones[k] = o; rest[k] = o.getWorldQuaternion(new T.Quaternion()); } });
-  return RT.src = { s, bones, rest, mixer: new T.AnimationMixer(s) };
+  const bones = {}, rest = {}, pos = {}; s.traverse(o => { if (o.isBone) { const k = boneKey(o.name); bones[k] = o; rest[k] = o.getWorldQuaternion(new T.Quaternion()); pos[k] = o.getWorldPosition(new T.Vector3()); } });
+  return RT.src = { s, bones, rest, pos, ground: restGround(pos), mixer: new T.AnimationMixer(s) };
+}
+// a rest pose's floor: its lowest foot or toe joint
+function restGround(pos) { let g = 1e9; for (const k in pos) if (/foot|toe/.test(k)) g = Math.min(g, pos[k].y); return g > 1e8 ? 0 : g; }
+// tr2 models rest in an A-pose or a loose T, the library in a T. Per bone: the world swing taking the library's rest direction
+// (bone to its main child) onto this model's, so a pose comes out as the same pose, not the same turn from a different start.
+// Bones without a main child (hands, toeless feet, the hips) take their parent's swing.
+const RCHILD = { spine: 'spine1', spine1: 'spine2', spine2: 'neck', neck: 'head' };
+for (const S of ['left', 'right']) Object.assign(RCHILD, { [S + 'shoulder']: S + 'arm', [S + 'arm']: S + 'forearm', [S + 'forearm']: S + 'hand', [S + 'upleg']: S + 'leg', [S + 'leg']: S + 'foot', [S + 'foot']: S + 'toebase' });
+function restSwing(S, order, pos) {
+  const sw = new Map();
+  for (const b of order) { // parents before children
+    const k = boneKey(b.name), c = RCHILD[k];
+    if (c && pos[c] && S.pos[k] && S.pos[c]) sw.set(b, new T.Quaternion().setFromUnitVectors(_bv.copy(S.pos[c]).sub(S.pos[k]).normalize(), _bs.copy(pos[c]).sub(pos[k]).normalize()));
+    else sw.set(b, sw.has(b.parent) ? sw.get(b.parent).clone() : new T.Quaternion());
+  }
+  return sw;
 }
 // the per-character half of the bake (bone order, rest rotations, parent links), kept while its clips bake
 function bakeCtx(id) {
   const def = CHARS[id], names = {}; def.scene.traverse(o => { if (o.isBone) names[boneKey(o.name)] = o.name; });
-  const C = { names, ratio: def.hipsRest / (ANIMLIB.hipsRest || 1), bake: id !== 'female' && !!T.SkeletonUtils && !!CHARS.female.scene, tgt: null, out: {} };
+  const C = { names, ratio: def.hipsRest / (ANIMLIB.hipsRest || 1), bake: id !== 'female' && !!T.SkeletonUtils && !!CHARS.female.scene, tgt: null, hw: null, out: {} };
   if (C.bake) {
     const S = retargetSrc(); def.scene.updateMatrixWorld(true); const order = []; def.scene.traverse(o => { if (o.isBone) order.push(o); });
-    const idx = new Map(order.map((b, i) => [b, i]));
-    C.tgt = order.map(b => { const k = boneKey(b.name), sb = S.bones[k] || null; return { b, k, sb, rest: b.getWorldQuaternion(new T.Quaternion()), srcInv: sb ? S.rest[k].clone().invert() : null, local: b.quaternion.clone(), pi: b.parent && b.parent.isBone ? idx.get(b.parent) : -1, parentStatic: b.parent && !b.parent.isBone ? b.parent.getWorldQuaternion(new T.Quaternion()) : new T.Quaternion(), w: new T.Quaternion() }; });
+    const idx = new Map(order.map((b, i) => [b, i])), tr2 = def.rig === 'tr2', pos = {};
+    if (tr2) for (const b of order) pos[boneKey(b.name)] = b.getWorldPosition(new T.Vector3());
+    const sw = tr2 ? restSwing(S, order, pos) : null;
+    // with a swing, the library's rest is first turned onto this model's: w = Qsrc(t) * (swing * Qsrc_rest)^-1 * Qrest
+    C.tgt = order.map(b => { const k = boneKey(b.name), sb = S.bones[k] || null; return { b, k, sb, rest: b.getWorldQuaternion(new T.Quaternion()), srcInv: sb ? (sw ? sw.get(b).clone().multiply(S.rest[k]) : S.rest[k].clone()).invert() : null, local: b.quaternion.clone(), pi: b.parent && b.parent.isBone ? idx.get(b.parent) : -1, parentStatic: b.parent && !b.parent.isBone ? b.parent.getWorldQuaternion(new T.Quaternion()) : new T.Quaternion(), w: new T.Quaternion() }; });
+    // tr2's root turns the hips' parent frame Z-up, so the library's local hips track can't be copied: the hips move by the
+    // library hips' world displacement (height above the floor, sideways and forward from rest), scaled by hip height
+    const hb = tr2 && order.find(b => boneKey(b.name) === 'hips');
+    if (hb && S.pos.hips) { const g = restGround(pos); C.hw = { b: hb, inv: hb.parent.matrixWorld.clone().invert(), p: pos.hips, g, k: (pos.hips.y - g) / Math.max(.01, S.pos.hips.y - S.ground) }; }
   }
   return C;
 }
@@ -193,7 +231,7 @@ function bakeClip(C, logical) {
     if (prop === 'quaternion' && C.bake) continue;
     const nt = t.clone(); nt.name = mine + '.' + prop;
     if (prop === 'position') {
-      if (boneKey(bone) !== 'hips') continue; // only the hips may translate
+      if (boneKey(bone) !== 'hips' || C.hw) continue; // only the hips may translate (tr2: sampled in world space below)
       const v = nt.values; for (let i = 0; i < v.length; i++) v[i] *= C.ratio;
       if (logical === 'walk' || logical === 'run') { for (let i = 0; i < v.length; i += 3) { v[i] = v[0]; v[i + 2] = v[2]; } } // in place
     }
@@ -201,6 +239,7 @@ function bakeClip(C, logical) {
   }
   if (C.bake) {
     const S = retargetSrc(), tgt = C.tgt, fps = 30, n = Math.max(2, Math.ceil(src.duration * fps) + 1), times = new Float32Array(n), vals = tgt.map(() => new Float32Array(n * 4));
+    const H = C.hw, hp = H ? new Float32Array(n * 3) : null;
     const act = S.mixer.clipAction(src); act.reset();
     if (ONESHOT[logical]) { act.setLoop(T.LoopOnce, 1); act.clampWhenFinished = true; } else act.setLoop(T.LoopRepeat, Infinity);
     act.play();
@@ -213,8 +252,14 @@ function bakeClip(C, logical) {
         else w.copy(pw).multiply(T0.local);
         _bq2.copy(pw).invert().multiply(w); const v = vals[j], i4 = f * 4; v[i4] = _bq2.x; v[i4 + 1] = _bq2.y; v[i4 + 2] = _bq2.z; v[i4 + 3] = _bq2.w;
       }
+      if (H) { _bv.setFromMatrixPosition(S.bones.hips.matrixWorld); const i3 = f * 3; hp[i3] = (_bv.x - S.pos.hips.x) * H.k; hp[i3 + 1] = (_bv.y - S.ground) * H.k; hp[i3 + 2] = (_bv.z - S.pos.hips.z) * H.k; }
     }
     act.stop(); S.mixer.uncacheAction(src);
+    if (H) { // world displacement -> the hips' parent space; walk and run stay in place
+      const still = logical === 'walk' || logical === 'run', x0 = hp[0], z0 = hp[2];
+      for (let f = 0; f < n; f++) { const i3 = f * 3; _bv.set(H.p.x + (still ? x0 : hp[i3]), H.g + hp[i3 + 1], H.p.z + (still ? z0 : hp[i3 + 2])).applyMatrix4(H.inv); hp[i3] = _bv.x; hp[i3 + 1] = _bv.y; hp[i3 + 2] = _bv.z; }
+      tracks.push(new T.VectorKeyframeTrack(H.b.name + '.position', times, hp));
+    }
     tgt.forEach((T0, j) => { if (T0.sb || T0.k.startsWith('hips')) tracks.push(new T.QuaternionKeyframeTrack(T0.b.name + '.quaternion', times, vals[j])); });
   }
   return new T.AnimationClip(logical, src.duration, tracks);
@@ -318,8 +363,8 @@ const EYE_SPEC = { demon: [.1, .155], vampire: [.12, .155], witch: [.14, .155], 
 // demon's used to sit ~25 cm under its head, the vampire's ~15 cm, the disguised shifter's ~14 cm above)
 function charHeadY(id) {
   const def = CHARS[id]; if (!def || !def.scene) return 1.68; if (def.headY) return def.headY;
-  const sc = def.scene, h = findBone(sc, 'head'), t = findBone(sc, 'headtopend'); if (!h || !t) return (def.headY = def.h * .93);
-  sc.updateMatrixWorld(true); const v = new T.Vector3(), a = h.getWorldPosition(v).y, b = t.getWorldPosition(v).y;
+  const sc = def.scene, h = findBone(sc, 'head'), t = findBone(sc, 'headtopend'); if (!h || (!t && def.top === undefined)) return (def.headY = def.h * .93);
+  sc.updateMatrixWorld(true); const v = new T.Vector3(), a = h.getWorldPosition(v).y, b = t ? t.getWorldPosition(v).y : def.top; // tr2 has no head-top bone: the crown is the model's top
   return (def.headY = ((a + b) / 2 - def.minY) * def.k);
 }
 function addEyes(R, hex) {
@@ -392,6 +437,10 @@ function aimOverlay(R, st) {
     _q2.setFromRotationMatrix(_m4); g.parent.updateWorldMatrix(true, false); g.parent.matrixWorld.decompose(_v3, _q3, _v4); g.quaternion.copy(_q3.invert().multiply(_q2));
     // seat the grip in the palm (between wrist and knuckles) — hand bones sit differently on every scanned model
     if (B.rh && B.mid) { B.mid.updateWorldMatrix(true, false); _v1.setFromMatrixPosition(B.rh.matrixWorld); _v2.setFromMatrixPosition(B.mid.matrixWorld); _v1.lerp(_v2, .5); g.position.copy(g.parent.worldToLocal(_v1)); }
+    else if (B.rh && B.rf) { // no finger bones (tr2): the palm is a little past the wrist, along the forearm
+      B.rh.updateWorldMatrix(true, false); _v1.setFromMatrixPosition(B.rh.matrixWorld); _v2.setFromMatrixPosition(B.rf.matrixWorld);
+      const L = _v1.distanceTo(_v2); _v2.sub(_v1).negate().normalize(); _v1.addScaledVector(_v2, L * .22); g.position.copy(g.parent.worldToLocal(_v1));
+    }
   }
 }
 // procedural crouch over any clip: thighs forward, shins down; the actor's sync() drops the root to match
@@ -433,6 +482,7 @@ function bindBounds(geo) {
   return (geo.userData.bb = { min, size });
 }
 function customizeGLB(R, o) {
+  if (CHARS[R.glb] && CHARS[R.glb].dressed) return R; // a suit, a uniform, coveralls: worn as modelled
   const H = (CHARS[R.glb] && CHARS[R.glb].h) || 1.8;
   const lin = hex => new T.Color(hex).convertSRGBToLinear();
   const U = R.cust = { cBase: { value: 0 }, cH: { value: H * (R.root.scale.y || 1) }, cSkin: { value: lin(o.skin) }, cHair: { value: lin(o.hairCol) }, cTop: { value: lin(o.top) }, cBot: { value: lin(o.bottom) }, cAcc: { value: lin(o.accent) }, cMask: { value: o.mask === 3 ? 3 : o.mask === 2 ? 2 : o.mask ? 1 : 0 }, cNeon: { value: lin(o.neon || 0x05d9e8) }, cCov: { value: COVER[R.glb] !== undefined ? 1 : 0 }, cCovC: { value: lin(COVER[R.glb] || o.top) }, cBMin: { value: new T.Vector3() }, cBSize: { value: new T.Vector3(1, 1, 1) }, cK: { value: o.k === undefined ? .78 : o.k } };
@@ -505,8 +555,10 @@ function customizeGLB(R, o) {
 // every customized person (the whole crowd) calls this per animated frame
 function custBase(R) { if (R && R.cust) { R.root.updateWorldMatrix(true, false); R.cust.cBase.value = R.root.matrixWorld.elements[13]; _v4.setFromMatrixScale(R.root.matrixWorld); R.cust.cH.value = CHARS[R.glb].h * _v4.y; } }
 // one dedicated Tripo model per outfit and body
-const PLAYER_MODELS = { m: { samurai: 'male', netrunner: 'hackm', nomad: 'nomadm', corpo: 'corpom' }, f: { samurai: 'female', netrunner: 'hackf', nomad: 'nomadf', corpo: 'corpof' } };
-const PLAYER_FALLBACK = { hackm: 'purger', nomadm: 'vampire', corpom: 'suit', hackf: 'civilian', nomadf: 'witch', corpof: 'female' };
+// v23's dressed outfits are men only (one model each); the creator hides them for the female body
+const PLAYER_MODELS = { m: { samurai: 'male', netrunner: 'hackm', nomad: 'nomadm', corpo: 'corpom', agent: 'suitman', drifter: 'drifter', scav: 'hoodie', officer: 'cop', utility: 'worker' }, f: { samurai: 'female', netrunner: 'hackf', nomad: 'nomadf', corpo: 'corpof' } };
+// what stands in while an outfit streams in: the dressed ones borrow the crowd's man (already in from boot, nothing extra to fetch)
+const PLAYER_FALLBACK = { hackm: 'purger', nomadm: 'vampire', corpom: 'suit', hackf: 'civilian', nomadf: 'witch', corpof: 'female', suitman: 'male_lo', drifter: 'male_lo', hoodie: 'male_lo', cop: 'male_lo', worker: 'male_lo' };
 const DESIGNED = ['hackm', 'hackf', 'nomadm', 'nomadf', 'corpom', 'corpof'];
 const NEON_OUTFIT = ['hackm', 'hackf'];
 // the model the player wears right now. An outfit that hasn't streamed in yet is fetched on the spot (like buildWeapon ->

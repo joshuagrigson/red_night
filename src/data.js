@@ -4,12 +4,12 @@
 const lc = h => new T.Color(h).convertSRGBToLinear();
 
 const CLS = [
-  { id: 'pistol', name: 'Pistols', short: 'PISTOL', wall: 'preacher', ids: ['iron45', 'polymer19', 'preacher', 'macro', 'stutter18'] },
-  { id: 'smg', name: 'SMGs', short: 'SMG', wall: 'vexor', ids: ['kurz5', 'vexor', 'unit45', 'bullpup90'] },
+  { id: 'pistol', name: 'Pistols', short: 'PISTOL', wall: 'preacher', ids: ['iron45', 'polymer19', 'preacher', 'macro', 'stutter18', 'warden9', 'sovereign'] },
+  { id: 'smg', name: 'SMGs', short: 'SMG', wall: 'vexor', ids: ['kurz5', 'vexor', 'unit45', 'bullpup90', 'bubblegum'] },
   { id: 'ar', name: 'Assault Rifles', short: 'RIFLE', wall: 'kalash', ids: ['kalash', 'bullpupA3', 'patriot15', 'battlefal'] },
   { id: 'sniper', name: 'Snipers', short: 'SNIPER', wall: 'longshot', ids: ['tundra', 'anvil50', 'longshot'] },
-  { id: 'shotgun', name: 'Shotguns', short: 'SHOTGUN', wall: 'riot', ids: ['twin', 'sawed', 'riot', 'autoloader', 'drumauto'] },
-  { id: 'lmg', name: 'LMGs', short: 'LMG', wall: 'bren', ids: ['doughboy', 'rpk', 'marine27', 'l86', 'bren'] },
+  { id: 'shotgun', name: 'Shotguns', short: 'SHOTGUN', wall: 'riot', ids: ['twin', 'sawed', 'riot', 'autoloader', 'drumauto', 'ember'] },
+  { id: 'lmg', name: 'LMGs', short: 'LMG', wall: 'bren', ids: ['doughboy', 'rpk', 'marine27', 'l86', 'bren', 'venom'] },
   { id: 'melee', name: 'Melee', short: 'MELEE', wall: 'katana', ids: ['katana', 'barbedbat', 'hockey', 'slasher'] },
   { id: 'special', name: 'Other', short: 'OTHER', wall: 'xeno', ids: ['xeno', 'chainsaw', 'nodachi', 'slasher', 'stars', 'karambit'] },
 ];
@@ -21,11 +21,14 @@ const WDEF = [
   ['preacher', 'pistol', 'Silver Preacher', 'Nickel-plated revolver · .357', 'prev', { dmg: 72, dmgMin: 46, r1: 22, r2: 55, rpm: 170, mag: 6, res: 42, reload: 2.8, hip: 2.8, ads: .4, recV: 3.4, recH: .6, adsT: .18, mob: .98, head: 2.0 }],
   ['macro', 'pistol', 'Pocket Macro', 'P365 X-Macro-style · 9mm compact', 'pmacro', { dmg: 29, dmgMin: 19, r1: 13, r2: 34, rpm: 520, mag: 17, res: 102, reload: 1.35, hip: 2.0, ads: .55, recV: 1.0, recH: .4, adsT: .12, mob: 1.02, head: 1.8 }],
   ['stutter18', 'pistol', 'Stutter 18', 'Full-auto machine pistol · 9mm', 'pauto', { dmg: 21, dmgMin: 14, r1: 10, r2: 28, rpm: 1100, auto: 1, mag: 33, res: 165, reload: 1.8, hip: 3.2, ads: 1.4, recV: .65, recH: .55, adsT: .15, mob: 1.0, head: 1.6 }],
+  ['warden9', 'pistol', 'Warden 9', 'Optic-ready striker pistol · 9mm', 'pglock', { dmg: 31, dmgMin: 21, r1: 15, r2: 38, rpm: 460, mag: 17, res: 102, reload: 1.45, hip: 2.1, ads: .45, recV: 1.15, recH: .33, adsT: .14, mob: 1.0, head: 1.8 }],
+  ['sovereign', 'pistol', 'Sovereign', 'Gilded hand cannon · .50 AE', 'p1911', { dmg: 88, dmgMin: 58, r1: 20, r2: 50, rpm: 150, mag: 7, res: 42, reload: 2.2, hip: 3.0, ads: .45, recV: 4.2, recH: .8, adsT: .2, mob: .97, head: 2.0 }],
   // smgs
   ['kurz5', 'smg', 'Kurz 5', 'MP5-style · 9mm', 'mp5', { dmg: 25, dmgMin: 17, r1: 16, r2: 42, rpm: 800, auto: 1, mag: 30, res: 180, reload: 2.0, hip: 3.2, ads: .7, recV: .55, recH: .3, adsT: .2, mob: .96, head: 1.5 }],
   ['vexor', 'smg', 'Vexor', 'Kriss Vector-style · .45', 'vector', { dmg: 22, dmgMin: 14, r1: 12, r2: 32, rpm: 1150, auto: 1, mag: 25, res: 175, reload: 2.1, hip: 3.4, ads: .8, recV: .38, recH: .28, adsT: .19, mob: .97, head: 1.5 }],
   ['unit45', 'smg', 'Unit 45', 'UMP-style · .45', 'ump', { dmg: 31, dmgMin: 20, r1: 18, r2: 45, rpm: 650, auto: 1, mag: 25, res: 150, reload: 2.2, hip: 3.0, ads: .65, recV: .75, recH: .35, adsT: .21, mob: .95, head: 1.5 }],
   ['bullpup90', 'smg', 'Bullpup 90', 'P90-style · 5.7mm', 'p90', { dmg: 23, dmgMin: 15, r1: 15, r2: 40, rpm: 900, auto: 1, mag: 50, res: 200, reload: 2.6, hip: 3.0, ads: .75, recV: .45, recH: .25, adsT: .22, mob: .95, head: 1.5 }],
+  ['bubblegum', 'smg', 'Bubblegum Vex', 'Pink Vector-style PDW · .45', 'vector', { dmg: 23, dmgMin: 15, r1: 12, r2: 32, rpm: 1080, auto: 1, mag: 30, res: 180, reload: 2.0, hip: 3.3, ads: .78, recV: .36, recH: .27, adsT: .18, mob: .98, head: 1.5 }],
   // rifles
   ['kalash', 'ar', 'Kalash 47', 'AK-47-style · 7.62', 'ak', { dmg: 38, dmgMin: 28, r1: 35, r2: 80, rpm: 600, auto: 1, mag: 30, res: 180, reload: 2.4, hip: 4.0, ads: .55, recV: 1.05, recH: .65, adsT: .27, mob: .9, head: 1.6 }],
   ['bullpupA3', 'ar', 'Bullpup A3', 'AUG-style · 5.56', 'aug', { dmg: 31, dmgMin: 23, r1: 32, r2: 75, rpm: 720, auto: 1, mag: 30, res: 180, reload: 2.5, hip: 3.8, ads: .45, recV: .7, recH: .35, adsT: .28, mob: .9, head: 1.6 }],
@@ -41,12 +44,14 @@ const WDEF = [
   ['riot', 'shotgun', 'Riot Pump', 'Pump action · 12ga', 'pump', { dmg: 24, dmgMin: 7, pellets: 8, r1: 9, r2: 25, rpm: 75, mag: 6, res: 42, reload: .45, shell: 1, hip: 5, ads: 3.6, recV: 4, recH: .8, adsT: .24, mob: .92, head: 1.2, action: 'pump' }],
   ['autoloader', 'shotgun', 'Auto-Loader', 'Semi-auto tactical · 12ga', 'semi', { dmg: 19, dmgMin: 6, pellets: 8, r1: 8, r2: 22, rpm: 220, mag: 7, res: 49, reload: .4, shell: 1, hip: 5.2, ads: 4, recV: 3, recH: .7, adsT: .25, mob: .91, head: 1.2 }],
   ['drumauto', 'shotgun', 'Drum Auto', 'Full-auto drum shotgun · 12ga', 'aa12', { dmg: 14, dmgMin: 4, pellets: 8, r1: 7, r2: 20, rpm: 300, auto: 1, mag: 20, res: 80, reload: 3.0, hip: 6, ads: 4.8, recV: 2.2, recH: .8, adsT: .3, mob: .87, head: 1.2 }],
+  ['ember', 'shotgun', 'Ember Breacher', 'Semi-auto core-heated shotgun · 12ga', 'semi', { dmg: 21, dmgMin: 7, pellets: 9, r1: 9, r2: 24, rpm: 200, mag: 8, res: 48, reload: .42, shell: 1, hip: 5.0, ads: 3.8, recV: 3.2, recH: .75, adsT: .25, mob: .91, head: 1.2 }],
   // lmgs
   ['doughboy', 'lmg', 'Doughboy BAR', 'BAR-style · .30-06', 'bar', { dmg: 46, dmgMin: 34, r1: 40, r2: 90, rpm: 520, auto: 1, mag: 20, res: 160, reload: 2.8, hip: 4.5, ads: .6, recV: 1.1, recH: .5, adsT: .38, mob: .84, head: 1.6 }],
   ['rpk', 'lmg', 'Kalash RPK', 'RPK-style drum · 7.62', 'rpk', { dmg: 36, dmgMin: 27, r1: 38, r2: 85, rpm: 620, auto: 1, mag: 75, res: 225, reload: 4.2, hip: 4.8, ads: .6, recV: .9, recH: .6, adsT: .4, mob: .82, head: 1.6 }],
   ['marine27', 'lmg', 'Marine 27', 'M27-style IAR · 5.56', 'm27', { dmg: 31, dmgMin: 24, r1: 35, r2: 80, rpm: 760, auto: 1, mag: 60, res: 240, reload: 3.6, hip: 4.4, ads: .5, recV: .7, recH: .35, adsT: .36, mob: .85, head: 1.6 }],
   ['l86', 'lmg', 'Royal L86', 'L86-style bullpup LSW · 5.56', 'l86', { dmg: 33, dmgMin: 25, r1: 40, r2: 90, rpm: 700, auto: 1, mag: 60, res: 240, reload: 3.8, hip: 4.6, ads: .45, recV: .75, recH: .3, adsT: .38, mob: .84, head: 1.6 }],
   ['bren', 'lmg', 'Blitz Bren', 'Bren-style top-feed · .303', 'bren', { dmg: 42, dmgMin: 31, r1: 42, r2: 92, rpm: 540, auto: 1, mag: 30, res: 210, reload: 3.0, hip: 4.5, ads: .55, recV: .95, recH: .4, adsT: .37, mob: .83, head: 1.6 }],
+  ['venom', 'lmg', 'Venom', 'Rad-cell support gun · 6.5mm', 'm27', { dmg: 33, dmgMin: 25, r1: 36, r2: 82, rpm: 720, auto: 1, mag: 80, res: 240, reload: 3.8, hip: 4.5, ads: .55, recV: .72, recH: .38, adsT: .38, mob: .84, head: 1.6 }],
   // melee
   ['katana', 'melee', 'Neon Katana', 'Mono-edge sword', 'katana', { kind: 'melee', dmg: 165, swing: .5, reach: 2.8, mob: 1.02 }],
   ['barbedbat', 'melee', 'Barbed Bat', 'Baseball bat wrapped in barbed wire', 'bat', { kind: 'melee', dmg: 125, swing: .62, reach: 2.5, wood: 1, bleed: 1, mob: 1.0 }],
@@ -583,6 +588,13 @@ const MODELS = {
   bullpup90: {"url":"assets/bullpup90.glb","q":[-0.05639,-0.70558,0.06692,0.7032],"off":[0.0043,-0.0016,0.0536],"nativeLen":1.0109,"len":0.5,"anchors":{"grip":[0,0.3977,0.398],"sup":[0,0.2965,-0.2253],"sight":[0,0.6136,0.1327],"rail":[0,0.5286,0.2767],"muzzle":[0,0.3322,-0.5054]},"tint":0.75},
   bullpupA3: {"url":"assets/bullpupA3.glb","q":[-0.02682,0.69291,-0.06841,0.71727],"off":[-0.0203,0.0057,0.0415],"nativeLen":0.9791,"len":0.74,"anchors":{"grip":[0,0.2736,0.2509],"sup":[0,0.277,-0.1407],"sight":[0,0.4336,-0.0918],"rail":[0,0.3939,0.1334],"muzzle":[0,0.28,-0.4895]},"tint":0.75},
   nodachi: {"url":"assets/nodachi.glb","q":[0.50456,-0.49468,-0.50125,-0.49947],"off":[0.0621,0.0705,0.0005],"nativeLen":0.9854,"len":1.35,"anchors":{"grip":[0,0.0691,0.3745],"sup":[0,0.0691,0.4237],"sight":[0,0.1387,0],"rail":[0,0.1387,0],"muzzle":[0,0.0697,-0.4927]},"tint":0.75},
+  // v23 (Tripo): sci-fi pistol, gilded hand cannon, pink PDW, core-heated breacher, rad-cell LMG. The last three have solid sight
+  // blocks (no notch to look through): the eye line sits just over them and the built-in dot marks the aim
+  warden9: {"url":"assets/warden9.glb","q":[-0.00293,0.99822,-0.0595,0.00029],"off":[0.0025,-0.0384,0.0475],"nativeLen":1.0473,"len":0.2,"anchors":{"grip":[0,0.389,0.3423],"sup":[0,0.369,0.3623],"sight":[0,0.8023,0.1505],"rail":[0,0.7079,0.4124],"muzzle":[0,0.5791,-0.5236]},"builtinDot":1,"tint":0.75},
+  sovereign: {"url":"assets/sovereign.glb","q":[-0.02961,-0.70598,0.03124,0.70692],"off":[0.0005,-0.0346,0.0198],"nativeLen":1.0057,"len":0.36,"anchors":{"grip":[0,0.0967,0.3932],"sup":[0,0.0767,0.4132],"sight":[0,0.438,0.0943],"rail":[0,0.1526,0.396],"muzzle":[0,0.3274,-0.5029]},"builtinDot":1,"tint":0.75},
+  bubblegum: {"url":"assets/bubblegum.glb","q":[0.01309,-0.39359,0.06688,0.91676],"off":[0.0624,0.0103,0.0141],"nativeLen":1.3129,"len":0.62,"anchors":{"grip":[0,0.3474,0.0902],"sup":[0,0.1682,-0.3382],"sight":[0,0.6738,-0.1067],"rail":[0,0.5651,-0.2478],"muzzle":[0,0.4574,-0.6564]},"builtinDot":1,"tint":0.75},
+  ember: {"url":"assets/ember.glb","q":[-0.00407,0.99995,-0.00911,0.00083],"off":[0.0013,-0.0006,0.005],"nativeLen":0.9801,"len":0.82,"anchors":{"grip":[0,0.0931,0.1511],"sup":[0,0.0183,-0.2518],"sight":[0,0.438,-0.0061],"rail":[0,0.3717,0.2683],"muzzle":[0,0.2626,-0.4901]},"builtinDot":1,"tint":0.75},
+  venom: {"url":"assets/venom.glb","q":[0.00343,0.70586,-0.04372,0.707],"off":[-0.0115,0.0021,0.0132],"nativeLen":0.9859,"len":0.9,"anchors":{"grip":[0,0.1707,0.2816],"sup":[0,0.1655,-0.265],"sight":[0,0.418,0.0678],"rail":[0,0.3894,0.1713],"muzzle":[0,0.2674,-0.493]},"builtinDot":1,"tint":0.75},
 };
 // The 11 original models load before the game starts; the rest stream in afterwards (or on demand when a
 // weapon is equipped/previewed) so phones don't wait on ~35 meshes up front.

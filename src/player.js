@@ -19,6 +19,7 @@ const P = {
 G.load = store('load') || { s1: 'patriot15', s2: 'preacher', melee: 'katana' };
 G.cfgs = store('cfgs') || {};
 G.char = store('char') || { gender: 'm', skin: 1, hair: 'short', hairCol: 0, outfit: 'samurai' };
+const charFit = () => { if (!OUTFITS[G.char.outfit] || (G.char.gender === 'f' && OUTFITS[G.char.outfit].male)) G.char.outfit = 'samurai'; }; charFit(); // the dressed outfits are men only
 function cfgOf(id) { if (!G.cfgs[id]) G.cfgs[id] = defaultCfg(W[id]); return G.cfgs[id]; }
 function saveLoad() { store('load', G.load); store('cfgs', G.cfgs); }
 
@@ -230,7 +231,7 @@ function buildArms() {
   const o = OUTFITS[G.char.outfit]; const g = new T.Group(); VM.root.add(g);
   const sleeve = new T.MeshStandardMaterial({ color: lc(o.top), roughness: .55, metalness: .2 });
   const glove = new T.MeshStandardMaterial({ color: lc(0x121216), roughness: .45, metalness: .3 });
-  const skin = new T.MeshStandardMaterial({ color: lc(SKINS[G.char.skin]), roughness: .55 });
+  const skin = new T.MeshStandardMaterial({ color: lc(o.skin !== undefined ? o.skin : SKINS[G.char.skin]), roughness: .55 }); // a dressed outfit's own skin
   const accent = new T.MeshBasicMaterial({ color: lc(o.accent), toneMapped: false });
   const mk = () => { const f = new T.Mesh(limbGeo, sleeve); const cuff = new T.Mesh(new T.CylinderGeometry(.043, .043, .025, 10), accent); const wrist = new T.Mesh(new T.CylinderGeometry(.032, .035, .05, 10), skin); const h = new T.Group(); const palm = new T.Mesh(new T.BoxGeometry(.06, .05, .1), glove); palm.position.set(0, -.012, .0); h.add(palm); const fing = new T.Mesh(new T.BoxGeometry(.058, .03, .05), glove); fing.position.set(0, -.04, -.03); fing.rotation.x = .6; h.add(fing); const thumb = new T.Mesh(new T.BoxGeometry(.02, .02, .05), glove); thumb.position.set(-.035, .0, -.03); h.add(thumb); g.add(f, cuff, wrist, h); return { f, cuff, wrist, h }; };
   VM.arms = { g, R: mk(), L: mk() };
@@ -401,7 +402,7 @@ function buildPlayerBody() {
   const o = OUTFITS[G.char.outfit];
   const g = CHARS_READY && makeGLBRig(playerGLBId());
   if (g) { customizeGLB(g, playerCust()); PBODY = g; PBODY.st = { speed: 0, phase: 0, hold: 'rifle', t: 0 }; scene.add(PBODY.root); return; }
-  PBODY = makeRig({ gender: G.char.gender, skin: SKINS[G.char.skin], hair: G.char.hair, hairCol: HAIR_COLS[G.char.hairCol], top: o.top, bottom: o.bottom, accent: o.accent, sleeve: 1, visor: o.visor, leather: G.char.outfit === 'nomad' || G.char.outfit === 'samurai', collar: G.char.outfit === 'corpo' });
+  PBODY = makeRig({ gender: G.char.gender, skin: o.skin !== undefined ? o.skin : SKINS[G.char.skin], hair: G.char.hair, hairCol: HAIR_COLS[G.char.hairCol], top: o.top, bottom: o.bottom, accent: o.accent, sleeve: 1, visor: o.visor, leather: G.char.outfit === 'nomad' || G.char.outfit === 'samurai', collar: G.char.outfit === 'corpo' });
   PBODY.st = { speed: 0, phase: 0, hold: 'rifle', t: 0 }; scene.add(PBODY.root);
 }
 // the world gun in the third-person hand, cached per body (it used to leave an empty mount group on the hand bone per swap)
