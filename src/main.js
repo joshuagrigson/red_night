@@ -4,6 +4,31 @@
 const PICKS = [];
 const FOGC = DIST.map(d => lc(d.fog));                 // district haze (authored as on-screen sRGB)
 const APT_FOG = lc(0x161412), IN_FOG = lc(0x141311), DAWN_FOG = lc(0x8a7672);
+const FOGD = FOGC.map(c => c.clone().multiplyScalar(.5));   // a district's haze with its grid down
+
+/* ---------- the grid: around 11 PM one of the old districts loses power for three hours ---------- */
+const GRID = { d: -1, k: 1, tgt: 1, flick: 0, lastK: 1 };
+function gridApply(d, k) {
+  const st = STYLES[d === 0 ? 'stone' : 'wood']; if (st) st.mat.emissiveIntensity = 1.25 * (.07 + .93 * k);   // a few candles and generators stay on
+  const h = GRIDM.head[d]; if (h) { if (!h.userData.c0) h.userData.c0 = h.color.clone(); h.color.copy(h.userData.c0).multiplyScalar(.03 + .97 * k); }
+  const c = GRIDM.cone[d]; if (c) c.opacity = .018 * k;
+  for (const l of LS) if (l.grid === d) { if (l.i0 === undefined) l.i0 = l.i; l.i = l.i0 * k; }
+  const g = G.sglowGeo; if (g) { const col = g.attributes.color.array, pos = g.attributes.position.array, c0 = G.sglowCol0;
+    for (let i = 0; i < pos.length; i += 3) if (pos[i + 1] < 14 && pos[i] < 1000 && districtAt(pos[i], pos[i + 2]) === d) { col[i] = c0[i] * k; col[i + 1] = c0[i + 1] * k; col[i + 2] = c0[i + 2] * k; }
+    g.attributes.color.needsUpdate = true; }
+}
+function gridFail(h) {
+  const pd = districtAt(P.pos.x, P.pos.z); GRID.d = pd === 0 || pd === 3 ? pd : (Math.random() < .5 ? 0 : 3); GRID.tgt = 0; GRID.flick = 1.4;
+  const n = DIST[GRID.d].name[0] + DIST[GRID.d].name.slice(1).toLowerCase(); feed(`<b>${fmtClock(h)}</b> · The grid just failed in ${n}`);
+  if (AU.ok) { AU.tone('sawtooth', 120, 32, 1.5, .22); AU.nz(1.1, 'lowpass', 900, 60, 1, .35); }
+}
+function gridRestore() { if (GRID.d < 0 || GRID.tgt === 1) return; GRID.tgt = 1; GRID.flick = 2.6; feed('<b>Power</b> is coming back on in ' + DIST[GRID.d].name[0] + DIST[GRID.d].name.slice(1).toLowerCase()); if (AU.ok) AU.tone('sawtooth', 45, 130, 1.8, .1); }
+function gridReset() { if (GRID.d >= 0) gridApply(GRID.d, 1); GRID.d = -1; GRID.k = 1; GRID.tgt = 1; GRID.flick = 0; GRID.lastK = 1; }
+function updateGrid(dt) {
+  if (GRID.d < 0) return;
+  if (GRID.flick > 0) { GRID.flick -= dt; GRID.k = Math.random() < .35 + (GRID.tgt ? .4 : 0) * (1 - GRID.flick / 2.6) ? GRID.tgt : 1 - GRID.tgt; if (GRID.flick <= 0) GRID.k = GRID.tgt; }
+  if (Math.abs(GRID.k - GRID.lastK) > .01) { gridApply(GRID.d, GRID.k); GRID.lastK = GRID.k; }
+}
 
 // The apartment and interiors live off-map (x 1500-1900) and were drawn from the street whenever they fell inside the
 // far plane (the arsenal alone is 8 Tripo guns, ~240k triangles); and inside them, the whole city was still submitted.
@@ -62,7 +87,7 @@ function startNight() {
   canvas.style.filter = 'blur(8px)';
   AU.siren(9);
   flashBanner('WAKE UP', 'The sirens are going off', 3);
-  G.dusk = 1; STORY.done = {}; STORY.safe = null; STORY.queue = []; STORY.cur = null; hideBeacon(); setTimeout(storyIntro, 2600);
+  G.dusk = 1; gridReset(); STORY.done = {}; STORY.safe = null; STORY.queue = []; STORY.cur = null; hideBeacon(); setTimeout(storyIntro, 2600);
 }
 function leaveApartment() {
   if (G.state !== 'apt') return;
@@ -172,7 +197,7 @@ function updateFires(dt) {
 let lightningT = 15;
 function updateWeather(dt) {
   lightningT -= dt;
-  if (lightningT <= 0 && G.dawn < .2) { lightningT = rand(18, 40); G.bolt = .35; setTimeout(() => AU.thunder(), rand(400, 1600)); }
+  if (lightningT <= 0 && G.dawn < .2) { lightningT = rand(18, 40) / Math.max(.35, G.rainK); if (G.rainK > .4) { G.bolt = .35; setTimeout(() => AU.thunder(), rand(400, 1600) * (1.6 - G.rainK)); } } // storms bring the lightning
   const base = lerp(.5 + (G.dusk || 0) * .3, 1.2, G.dawn);
   if (G.bolt > 0) { G.bolt -= dt; const k = G.bolt > .25 || (G.bolt < .15 && G.bolt > .08) ? 1 : 0; G.sky.uniforms.flash.value = k; hemi.intensity = base + k * 1.4; $('flash').style.opacity = k * .12; }
   else { G.sky.uniforms.flash.value = 0; hemi.intensity = base; $('flash').style.opacity = 0; }
@@ -187,8 +212,9 @@ function updateClock(dt) {
   const h = Math.floor(G.hour);
   if (h !== G.lastHour) {
     G.lastHour = h; const hh = (19 + h) % 24; G.holoDraw(String(hh).padStart(2, '0') + ':00', h < 11 ? (12 - h) + ' HOURS LEFT' : 'ALMOST DAWN');
-    if (h > 0 && h < 12) { const msgs = ['', 'The demons are awake', 'Reptilians are dropping the disguise', 'The witches are out in Salem', 'Midnight. It gets worse from here', 'Half the city is burning', 'Something is wearing faces', 'The blood moon is at its peak', 'They can smell dawn coming', 'Hold on', 'Two hours left', 'Last hour. Run if you have to']; flashBanner(fmtClock(h), msgs[h] || '', 2.4); AU.siren(4); }
+    if (h > 0 && h < 12) { const msgs = ['', 'The demons are awake', 'Reptilians are dropping the disguise', 'The witches are out in Salem', 'An hour to midnight. The grid is failing', 'Midnight. Half the city is burning', 'Something is wearing faces', 'The blood moon is at its peak', 'They can smell dawn coming', 'Hold on', 'Two hours left', 'Last hour. Run if you have to']; flashBanner(fmtClock(h), msgs[h] || '', 2.4); AU.siren(4); }
     setTxt('clockSub', h < 11 ? 'Survive until 7:00 AM' : 'Sunrise is close');
+    if (h === 4 && GRID.d < 0) gridFail(h); else if (h === 7) gridRestore();
     storyHour(h);
   }
   if (G.hour >= 11.6) G.dawn = clamp((G.hour - 11.6) / .4, 0, 1);
@@ -250,7 +276,8 @@ function loop(now) {
       const d = G.inside ? Math.max(0, G.dist) : districtAt(P.pos.x, P.pos.z);
       if (G.inside) { scene.fog.color.lerp(IN_FOG, dt * 3); scene.fog.density = .012; }
       else if (d !== G.dist) { G.dist = d; flashBanner(DIST[d].name, DIST[d].sub, 2.2); setTxt('distName', DIST[d].name); setTxt('objective', DIST[d].sub); }
-      if (!G.inside) scene.fog.color.lerp(G.dawn > 0 ? DAWN_FOG : FOGC[d], dt * .6);
+      if (!G.inside) scene.fog.color.lerp(G.dawn > 0 ? DAWN_FOG : GRID.d === d && GRID.tgt === 0 ? FOGD[d] : FOGC[d], dt * .6);
+      updateGrid(dt);
       if (!G.inside) scene.fog.density = lerp(G.quality === 'high' ? .0105 : .0125, .006, G.dawn) * (d === 3 ? 1.25 : 1);
       updateWeather(dt);
     } else { scene.fog.color.copy(APT_FOG); scene.fog.density = .02; }

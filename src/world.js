@@ -142,7 +142,7 @@ function buildCity() {
       if (blade && (f === 'w' || f === 'e')) me.rotation.y = 0; // blade perpendicular to facade: plane spans x
       if (blade && (f === 'n' || f === 's')) me.rotation.y = Math.PI / 2;
       scene.add(me);
-      const c3 = new T.Color(isNeon ? col : '#fff0d8'); addLS(me.position.x, y, me.position.z, c3, isNeon ? 2 : 1.4, isNeon ? 18 : 14);
+      const c3 = new T.Color(isNeon ? col : '#fff0d8'); addLS(me.position.x, y, me.position.z, c3, isNeon ? 2 : 1.4, isNeon ? 18 : 14); gridLS(d);
       // wet street reflection smear
       const smk = 'sm' + c3.getHexString(); const sm = new T.Mesh(new T.PlaneGeometry(blade ? 1.2 : w * .7, 9), MATC[smk] || (MATC[smk] = new T.MeshBasicMaterial({ map: glowTex, color: c3, transparent: true, opacity: isNeon ? .3 : .16, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false })));
       sm.rotation.x = -Math.PI / 2; const ox = f === 'w' ? -5 : f === 'e' ? 5 : 0, oz = f === 'n' ? -5 : f === 's' ? 5 : 0;
@@ -283,27 +283,48 @@ function buildStaticGlows() {
     fragmentShader: 'uniform sampler2D map; varying vec3 vC; varying float vF; void main(){ vec4 t=texture2D(map, gl_PointCoord); gl_FragColor=vec4(vC*t.rgb*1.6, t.a*vF); }',
     transparent: true, depthWrite: false, blending: T.AdditiveBlending,
   });
-  const pts = new T.Points(geo, mat); pts.frustumCulled = false; scene.add(pts); G.sglow = mat;
+  const pts = new T.Points(geo, mat); pts.frustumCulled = false; scene.add(pts); G.sglow = mat; G.sglowGeo = geo; G.sglowCol0 = col.slice();
 }
 // merge static meshes by material into spatial chunks so the city costs a few dozen draw calls
+// plain cached materials that differ only by colour merge into one vertex-coloured mesh per cell (fewer draw calls)
+const VCMAT = {};
+let MSET = null;
+function vcKey(m) {
+  if (!MSET.has(m) || m.transparent || m.map || m.vertexColors || m.hasOwnProperty('onBeforeCompile')) return null;
+  if (m.isMeshBasicMaterial) return 'b' + m.side + m.fog + m.toneMapped;
+  if (m.isMeshStandardMaterial && !m.emissiveMap && !m.normalMap && !m.roughnessMap && !m.metalnessMap && !m.bumpMap && m.emissive.r + m.emissive.g + m.emissive.b === 0)
+    return 's' + m.side + m.fog + m.roughness.toFixed(2) + m.metalness.toFixed(2) + m.envMapIntensity;
+  return null;
+}
+function vcMat(key, m) {
+  return VCMAT[key] || (VCMAT[key] = m.isMeshBasicMaterial ? new T.MeshBasicMaterial({ vertexColors: true, side: m.side, fog: m.fog, toneMapped: m.toneMapped })
+    : new T.MeshStandardMaterial({ vertexColors: true, side: m.side, fog: m.fog, roughness: m.roughness, metalness: m.metalness, envMapIntensity: m.envMapIntensity }));
+}
 function bakeStatic() {
-  scene.updateMatrixWorld(true);
+  scene.updateMatrixWorld(true); MSET = new Set(Object.values(MATC));
   const groups = new Map(); const wp = new T.Vector3();
   scene.traverse(o => {
     if (!o.isMesh || o.isInstancedMesh || o.isSkinnedMesh) return;
     for (let a = o; a; a = a.parent) if (a.userData && a.userData.dyn) return;
     const m = o.material; if (Array.isArray(m) || !o.visible || (m && m.visible === false)) return;
+    if (o.geometry.attributes.color) return;
     o.getWorldPosition(wp); const ck = Math.floor((wp.x + 2000) / 240) + '_' + Math.floor((wp.z + 2000) / 240);
-    const k = m.uuid + '|' + ck; if (!groups.has(k)) groups.set(k, { m, list: [] }); groups.get(k).list.push(o);
+    const vk = vcKey(m), k = (vk ? 'vc' + vk : m.uuid) + '|' + ck + '|' + o.renderOrder;
+    if (!groups.has(k)) groups.set(k, { m: vk ? vcMat(vk, m) : m, vc: !!vk, list: [] }); groups.get(k).list.push(o);
   });
   let merged = 0;
-  for (const { m, list } of groups.values()) {
+  for (const { m, vc, list } of groups.values()) {
     if (list.length < 2) continue;
     const geos = list.map(o => { const g = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry.clone(); g.applyMatrix4(o.matrixWorld); return g; });
     let total = 0; geos.forEach(g => total += g.attributes.position.count);
-    const P3 = new Float32Array(total * 3), N3 = new Float32Array(total * 3), U2 = new Float32Array(total * 2); let off = 0;
-    geos.forEach(g => { const c = g.attributes.position.count; P3.set(g.attributes.position.array, off * 3); if (g.attributes.normal) N3.set(g.attributes.normal.array, off * 3); if (g.attributes.uv) U2.set(g.attributes.uv.array, off * 2); off += c; g.dispose(); });
+    const P3 = new Float32Array(total * 3), N3 = new Float32Array(total * 3), U2 = new Float32Array(total * 2), C3 = vc ? new Float32Array(total * 3) : null; let off = 0;
+    geos.forEach((g, i) => {
+      const c = g.attributes.position.count; P3.set(g.attributes.position.array, off * 3); if (g.attributes.normal) N3.set(g.attributes.normal.array, off * 3); if (g.attributes.uv) U2.set(g.attributes.uv.array, off * 2);
+      if (C3) { const col = list[i].material.color; for (let j = 0; j < c; j++) { C3[(off + j) * 3] = col.r; C3[(off + j) * 3 + 1] = col.g; C3[(off + j) * 3 + 2] = col.b; } }
+      off += c; g.dispose();
+    });
     const bg = new T.BufferGeometry(); bg.setAttribute('position', new T.BufferAttribute(P3, 3)); bg.setAttribute('normal', new T.BufferAttribute(N3, 3)); bg.setAttribute('uv', new T.BufferAttribute(U2, 2));
+    if (C3) bg.setAttribute('color', new T.BufferAttribute(C3, 3));
     bg.computeBoundingSphere();
     const mesh = new T.Mesh(bg, m); mesh.renderOrder = list[0].renderOrder; mesh.userData.baked = 1; mesh.userData.off = bg.boundingSphere.center.x > 1000; scene.add(mesh);
     list.forEach(o => o.parent && o.parent.remove(o)); merged += list.length;
@@ -335,14 +356,20 @@ function wreck(x, z, h) {
   addBox(x - hx, x + hx, z - hz, z + hz, 1.4).surf = 'metal';
   FIRES.push({ p: new T.Vector3(x, 1.2, z), s: 1.3 }); addLS(x, 2.2, z, 0xff6a10, 4, 20, 1);
 }
+// street lighting by district: own lamp-head and beam materials + tagged point lights, so GRID can black a district out
+const GRIDM = { head: {}, cone: {} };
+const gridHead = (d, col) => GRIDM.head[d] || (GRIDM.head[d] = new T.MeshBasicMaterial({ color: lc(col), toneMapped: false }));
+const gridCone = (d, col) => GRIDM.cone[d] || (GRIDM.cone[d] = new T.MeshBasicMaterial({ color: lc(col), transparent: true, opacity: .018, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false, side: T.DoubleSide }));
+const gridLS = d => { LS[LS.length - 1].grid = d; };
 function lamp(x, z, col) {
+  const d = districtAt(x, z);
   const g = new T.Group(); mesh(new T.CylinderGeometry(.07, .1, 7, 8), STD(0x1a1a22, .5, .8), 0, 3.5, 0, g);
-  mesh(new T.BoxGeometry(1.6, .1, .1), STD(0x1a1a22, .5, .8), .75, 6.9, 0, g); mesh(new T.BoxGeometry(.7, .08, .3), NEON(col), 1.4, 6.82, 0, g);
+  mesh(new T.BoxGeometry(1.6, .1, .1), STD(0x1a1a22, .5, .8), .75, 6.9, 0, g); mesh(new T.BoxGeometry(.7, .08, .3), gridHead(d, col), 1.4, 6.82, 0, g);
   g.position.set(x, 0, z); g.rotation.y = Math.atan2(-x, -z) + Math.PI / 2 + (Math.random() < .5 ? 0 : Math.PI); scene.add(g);
   addBox(x - .12, x + .12, z - .12, z + .12, 7, { noshoot: true });
   const hp = new T.Vector3(1.4, 6.8, 0).applyAxisAngle(new T.Vector3(0, 1, 0), g.rotation.y).add(g.position);
-  addLS(hp.x, hp.y - .5, hp.z, col, 2.6, 20);
-  const cone = new T.Mesh(new T.ConeGeometry(2.6, 6.6, 16, 1, true), ADD(col, .018, 1));
+  addLS(hp.x, hp.y - .5, hp.z, col, 2.6, 20); gridLS(d);
+  const cone = new T.Mesh(new T.ConeGeometry(2.6, 6.6, 16, 1, true), gridCone(d, col));
   cone.position.set(hp.x, 3.4, hp.z); scene.add(cone);
 }
 // (was also named streetProps, which city2.js's prop pass silently overrode: no lamps, parked cars or barricades were ever built)
@@ -434,6 +461,25 @@ function sky() {
   for (let i = 0; i < N; i++) { const x = rand(-35, 35), y = rand(-5, 30), z = rand(-35, 35); rp.set([x, y, z, x + .05, y - .9, z + .05], i * 6); }
   rg.setAttribute('position', new T.BufferAttribute(rp, 3));
   const rain = new T.LineSegments(rg, new T.LineBasicMaterial({ color: 0xb4bcc8, transparent: true, opacity: .24, depthWrite: false })); rain.frustumCulled = false; scene.add(rain); G.rain = rain;
+  // splashes on the street: tiny expanding rings near the camera, as many as the storm is heavy
+  const NS = G.quality === 'high' ? 90 : 45, sg = new T.BufferGeometry(), sp = new Float32Array(NS * 3), sa = new Float32Array(NS), sl = new Float32Array(NS);
+  for (let i = 0; i < NS; i++) { sp[i * 3 + 1] = -99; sl[i] = Math.random(); }
+  sg.setAttribute('position', new T.BufferAttribute(sp, 3)); sg.setAttribute('life', new T.BufferAttribute(sl, 1));
+  const smat = new T.ShaderMaterial({ uniforms: { scale: { value: 400 } }, transparent: true, depthWrite: false,
+    vertexShader: 'attribute float life; varying float vL; uniform float scale; void main(){ vL=life; vec4 mv=modelViewMatrix*vec4(position,1.0); gl_PointSize=(4.0+life*16.0)*scale*.004/max(.3,-mv.z); gl_Position=projectionMatrix*mv; }',
+    fragmentShader: 'varying float vL; void main(){ vec2 d=gl_PointCoord-.5; float r=length(d)*2.0; float ring=smoothstep(.55,.8,r)*(1.0-smoothstep(.8,1.0,r)); gl_FragColor=vec4(vec3(.75,.78,.82), ring*(1.0-vL)*.35); }' });
+  const splash = new T.Points(sg, smat); splash.frustumCulled = false; scene.add(splash);
+  UPD.push((dt) => {
+    splash.visible = G.rain.visible && G.rainK > .05 && camera.position.y < 30; if (!splash.visible) return;
+    smat.uniforms.scale.value = renderer.domElement.height; const cx = camera.position.x, cz = camera.position.z;
+    for (let i = 0; i < NS; i++) {
+      sl[i] += dt * 2.4; if (sl[i] < 1) continue;
+      if (Math.random() > G.rainK) { sp[i * 3 + 1] = -99; sl[i] = Math.random() * .5; continue; }
+      const a = Math.random() * TAU, r = 1.2 + Math.random() * 11, x = cx + Math.cos(a) * r, z = cz + Math.sin(a) * r;
+      sp[i * 3] = x; sp[i * 3 + 1] = groundAt(x, z, camera.position.y) + .02; sp[i * 3 + 2] = z; sl[i] = 0;
+    }
+    sg.attributes.position.needsUpdate = true; sg.attributes.life.needsUpdate = true;
+  });
   UPD.push((dt) => {
     const cx = camera.position.x, cy = camera.position.y, cz = camera.position.z; const a = rg.attributes.position.array; const sp = 32 * dt;
     for (let i = 0; i < N; i++) {
@@ -611,8 +657,8 @@ const deadTrees = [];
 function salemLantern(x, z) {
   const g = new T.Group(); g.position.set(x, 0, z); scene.add(g);
   mesh(new T.CylinderGeometry(.06, .09, 4, 8), STD(0x0a0a0a, .4, .8), 0, 2, 0, g);
-  mesh(new T.BoxGeometry(.45, .6, .45), STD(0x0a0a0a, .4, .8), 0, 4.2, 0, g); mesh(new T.BoxGeometry(.35, .45, .35), NEON(0xffa040), 0, 4.2, 0, g);
-  glowSprite(x, 4.2, z, lc(0xffa040), 2.4); addLS(x, 4, z, 0xffa040, 2.4, 16, .3); addBox(x - .12, x + .12, z - .12, z + .12, 4.5, { noshoot: true });
+  mesh(new T.BoxGeometry(.45, .6, .45), STD(0x0a0a0a, .4, .8), 0, 4.2, 0, g); mesh(new T.BoxGeometry(.35, .45, .35), gridHead(3, 0xffa040), 0, 4.2, 0, g);
+  glowSprite(x, 4.2, z, lc(0xffa040), 2.4); addLS(x, 4, z, 0xffa040, 2.4, 16, .3); gridLS(3); addBox(x - .12, x + .12, z - .12, z + .12, 4.5, { noshoot: true });
 }
 function salemLandmarks() {
   // Old burying point (-100,100)

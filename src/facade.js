@@ -79,7 +79,7 @@ function facadeDetail(style, x0, x1, z0, z1, h, d, tier) {
       if (FD_BOX) (FD_BOX.bays = FD_BOX.bays || []).push([px, pz, ux, uz, (bw - .5) / 2, sh + .1, kind === 'lit' || kind === 'dark' ? 'glass' : 'metal']);
       if (kind === 'lit' && srand() < .6) { // awning
         fdPush('awning', ax + ux * t + nx * .75, sh + .45, az + uz * t + nz * .75, bw - .3, .1, 1.4, ry, new T.Color(spick(['#8a1c1c', '#1d4a33', '#2a3550', '#a8741c', '#d8d0c0'])).multiplyScalar(.6), .32);
-        if (srand() < .35) addLS(ax + ux * t + nx * 2.5, 2.2, az + uz * t + nz * 2.5, new T.Color(spick(DIST[d].warm)), 1.1, 9);
+        if (srand() < .35) { addLS(ax + ux * t + nx * 2.5, 2.2, az + uz * t + nz * 2.5, new T.Color(spick(DIST[d].warm)), 1.1, 9); LS[LS.length - 1].grid = d; }
       }
     }
     // AC units / dishes / mashrabiya / shutters on upper floors
