@@ -66,7 +66,7 @@ window.addEventListener('mousemove', e => {
 // touch: floating joystick on the left, look anywhere on the right, buttons. Each touch is tracked by its identifier and
 // every touch event is checked against the live touch list, so a lost touchend (a notification, an app switch, the layer
 // hidden mid-press) can't leave FIRE held, a button lit or the stick dead.
-const TOUCH = { joy: null, look: null, fireIds: new Set(), bt: new Map(), sprint: false, sprintT: 0, st: '', lbl: '' };
+const TOUCH = { joy: null, look: null, fireIds: new Set(), bt: new Map(), sprint: false, sprintT: 0, st: '', lbl: '', actT: -1e9 };
 const JOY_R = 56, JOY_DZ = .14;
 // Look speed (Settings, touch only; mouse sensitivity is separate), button size and the optional left FIRE
 G.lookSpd = (() => { const v = store('ls'); return typeof v === 'number' ? clamp(v, .5, 2) : 1; })();
@@ -79,18 +79,25 @@ function touchPrefs() { const b = document.body; b.style.setProperty('--bs', G.b
 // Touch look. 1.0 turns 180 degrees per 280 px of drag at an ordinary swipe; a slow, careful drag runs a little finer
 // and a fast flick up to 1.5x further. The gain follows the finger's own speed (px/s on the event clock, smoothed over
 // ~45 ms), so it is the same at 30 or 120 fps, and a steady drag maps linearly. Vertical runs at 3/4.
-const LOOK_K = Math.PI / 280, LOOK_KY = .75, LOOK_SLOP = 6;
+// LOOK_SLOP: how far a thumb on a button that acts on press slides before it steers. TAP_SLOP: the same for the two that act
+// on release (the weapon panel, ACT), which also counts as their tap tolerance, as roomy as a tap on open screen
+const LOOK_K = Math.PI / 280, LOOK_KY = .75, LOOK_SLOP = 6, TAP_SLOP = 14;
 function lookGain(v) { return v < 600 ? lerp(.86, 1, smooth01((v - 120) / 480)) : 1 + .5 * smooth01((v - 900) / 1700); }
 function touchTs(e) { const t = e.timeStamp; return t > 0 && isFinite(t) ? t : performance.now(); }
-function lookMove(o, x, y, ts) {
+// kx, ky: px added to (or held back from) this move's travel; the speed is the finger's own
+function lookMove(o, x, y, ts, kx, ky) {
   const dx = x - o.x, dy = y - o.y, dt = ts > o.ts ? clamp((ts - o.ts) / 1000, .004, .1) : .016, vi = Math.hypot(dx, dy) / dt; o.x = x; o.y = y; o.ts = ts;
   o.v = o.v < 0 ? vi : o.v + (vi - o.v) * (1 - Math.exp(-dt / .045)); // the first move seeds it: a flick starts at speed
-  const g = lookGain(o.v); INP.lookX += dx * g; INP.lookY += dy * g * LOOK_KY;
+  const g = lookGain(o.v); INP.lookX += (dx + (kx || 0)) * g; INP.lookY += (dy + (ky || 0)) * g * LOOK_KY;
 }
-// a finger that starts on a button steers once it has slid past the slop (a press with a wobble stays a press)
+// a finger that starts on a button steers once it has slid past its slop (a press with a wobble stays a press). The move
+// that crosses it steers from the press point less the slop, and the slop is paid back over the next few px of slide, so a
+// flick from FIRE turns as far as one from open space and a slow slide starts without a jump
 function btnLook(b, t, ts) {
-  if (!b.live) { if (Math.hypot(t.clientX - b.sx, t.clientY - b.sy) < LOOK_SLOP) return; b.live = true; b.x = t.clientX; b.y = t.clientY; b.ts = ts; return; }
-  lookMove(b, t.clientX, t.clientY, ts);
+  const x = t.clientX, y = t.clientY, dx = x - b.x, dy = y - b.y, L = Math.hypot(dx, dy); let k = 0;
+  if (!b.live) { if (L < b.slop) return; b.live = true; b.owe = b.slop; k = -b.slop; } // b.x, b.y are still the press point here
+  if (b.owe > 0) { const p = Math.min(b.owe, (L + k) * .5); b.owe -= p; k += p; }
+  lookMove(b, x, y, ts, L > 0 ? dx / L * k : 0, L > 0 ? dy / L * k : 0);
 }
 function touchLive(e, id) { const l = e.touches; for (let i = 0; i < l.length; i++) if (l[i].identifier === id) return true; return false; }
 function joyEnd() { TOUCH.joy = null; INP.mx = INP.my = INP.joyMag = INP.joyRaw = 0; const j = $('joy'); if (j) j.style.opacity = 0; }
@@ -112,38 +119,47 @@ function touchReset() {
 function setupTouch() {
   const joyEl = $('joy'), knob = $('knob');
   touchPrefs();
+  // look: how far (px) the thumb slides before the button steers the view; 0 and it never does
   const btn = (id, down, up, look) => {
     const el = $(id); if (!el) return;
     el.addEventListener('touchstart', e => {
       e.preventDefault(); e.stopPropagation(); touchSync(e); const ts = touchTs(e);
-      for (const t of e.changedTouches) { const b = { el, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts, v: -1, live: false, up, look, t0: performance.now() }; TOUCH.bt.set(t.identifier, b); if (down) down(t.identifier, b); }
+      for (const t of e.changedTouches) { const b = { el, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts, v: -1, live: false, up, slop: look || 0, owe: 0, t0: performance.now() }; TOUCH.bt.set(t.identifier, b); if (down) down(t.identifier, b); }
       if (id !== 'bAds') el.classList.add('on');
     }, { passive: false });
     // every action button steers the view once the thumb slides (press RELOAD and keep aiming, as in mobile CoD)
-    el.addEventListener('touchmove', e => { e.preventDefault(); e.stopPropagation(); const ts = touchTs(e); for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b && b.look) btnLook(b, t, ts); } }, { passive: false });
+    el.addEventListener('touchmove', e => { e.preventDefault(); e.stopPropagation(); const ts = touchTs(e); for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b && b.slop) btnLook(b, t, ts); } }, { passive: false });
     const end = e => { e.preventDefault(); e.stopPropagation(); const lost = e.type === 'touchcancel'; for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b) btnUp(t.identifier, b, lost); } touchSync(e); };
     el.addEventListener('touchend', end, { passive: false }); el.addEventListener('touchcancel', end, { passive: false });
   };
   const fireDown = id => { TOUCH.fireIds.add(id); INP.fire = true; AU.init(); }, fireUp = id => { TOUCH.fireIds.delete(id); INP.fire = TOUCH.fireIds.size > 0; };
-  btn('bFire', fireDown, fireUp, true); btn('bFire2', fireDown, fireUp, true);
-  btn('bAds', () => { P.adsHeld = !P.adsHeld; $('bAds').classList.toggle('on', P.adsHeld); }, null, true);
+  btn('bFire', fireDown, fireUp, LOOK_SLOP); btn('bFire2', fireDown, fireUp, LOOK_SLOP);
+  btn('bAds', () => { P.adsHeld = !P.adsHeld; $('bAds').classList.toggle('on', P.adsHeld); }, null, LOOK_SLOP);
   // JUMP is the handbrake in a car, held for as long as the thumb stays on it
-  btn('bJump', () => { if (P.inCar) INP.brake = true; else press('jump'); }, () => { INP.brake = false; }, true);
-  btn('bCrouch', () => press('crouch'), null, true); btn('bReload', () => press('reload'), null, true); btn('bMelee', () => press('melee'), null, true);
-  btn('bAct', () => press('act')); btn('bPause', () => press('pause'));
-  // the weapon panel (top right) is the swap: tap for the other gun, hold for the blade; a drag that starts on it looks
-  btn('hBR', null, (id, b, lost) => { if (!lost && !b.live) press(performance.now() - b.t0 > 450 ? 's3' : 'swap'); }, true);
+  btn('bJump', () => { if (P.inCar) INP.brake = true; else press('jump'); }, () => { INP.brake = false; }, LOOK_SLOP);
+  btn('bCrouch', () => press('crouch'), null, LOOK_SLOP); btn('bReload', () => press('reload'), null, LOOK_SLOP); btn('bMelee', () => press('melee'), null, LOOK_SLOP);
+  btn('bPause', () => press('pause'));
+  // ACT and the weapon panel act on release, and only if the thumb never slid off into a look, so a look that lands on
+  // DRIVE turns instead of getting in. ACT also ignores a press that began within .3 s of its label appearing or changing
+  // (setPrompt), so a double tap on EXIT CAR doesn't get straight back in
+  btn('bAct', null, (id, b, lost) => { if (!lost && !b.live && b.t0 - TOUCH.actT >= 300) press('act'); }, TAP_SLOP);
+  // the weapon panel (top right) is the swap: tap for the other gun, hold for the blade
+  btn('hBR', null, (id, b, lost) => { if (!lost && !b.live) press(performance.now() - b.t0 > 450 ? 's3' : 'swap'); }, TAP_SLOP);
   $('hBR').setAttribute('role', 'button'); $('hBR').setAttribute('aria-label', 'Swap weapon (hold for the blade)');
   const surface = document.body;
+  // in play the touches this claims are consumed: Chromium (Android) otherwise holds back every move inside its 15 px slop,
+  // and a tap can't become a ghost click on a menu it opens. Menus, the buttons and the rotate hint keep their own
   surface.addEventListener('touchstart', e => {
     touchSync(e);
     if (!(G.state === 'city' || G.state === 'apt')) return;
+    let claimed = false;
     for (const t of e.changedTouches) {
-      if (t.target.closest && t.target.closest('.menu,.tb')) continue;
-      if (t.clientX < window.innerWidth * .42 && !TOUCH.joy) { TOUCH.joy = { id: t.identifier, x: t.clientX, y: t.clientY }; joyEl.style.left = t.clientX + 'px'; joyEl.style.top = t.clientY + 'px'; joyEl.style.opacity = 1; knob.style.transform = 'translate(0,0)'; }
-      else if (!TOUCH.look) { TOUCH.look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts: touchTs(e), v: -1, t0: performance.now() }; }
+      if (t.target.closest && t.target.closest('.menu,.tb,[role=button]')) continue;
+      if (t.clientX < window.innerWidth * .42 && !TOUCH.joy) { TOUCH.joy = { id: t.identifier, x: t.clientX, y: t.clientY }; joyEl.style.left = t.clientX + 'px'; joyEl.style.top = t.clientY + 'px'; joyEl.style.opacity = 1; knob.style.transform = 'translate(0,0)'; claimed = true; }
+      else if (!TOUCH.look) { TOUCH.look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts: touchTs(e), v: -1, t0: performance.now() }; claimed = true; }
     }
-  }, { passive: true });
+    if (claimed && e.cancelable) e.preventDefault();
+  }, { passive: false });
   surface.addEventListener('touchmove', e => {
     const ts = touchTs(e);
     for (const t of e.changedTouches) {
@@ -657,7 +673,7 @@ function updatePlayer(dt) {
   let dyaw = -INP.lookX * sensK, dpit = -INP.lookY * sensK * (G.invertY ? -1 : 1);
   INP.lookX = 0; INP.lookY = 0;
   if (!IS_TOUCH) { if (KEY.ArrowLeft) dyaw += 2.2 * dt; if (KEY.ArrowRight) dyaw -= 2.2 * dt; if (KEY.ArrowUp) dpit += 1.6 * dt; if (KEY.ArrowDown) dpit -= 1.6 * dt; }
-  P.yaw += dyaw; P.pitch += dpit;
+  P.yaw += dyaw; P.pitch += dpit; AAS.iy = dyaw; AAS.ip = dpit; // this frame's look input, for the aim assist's turn-away test
   P.lookVX = damp(P.lookVX, dyaw / Math.max(dt, .001), 30, dt); P.lookVY = damp(P.lookVY, dpit / Math.max(dt, .001), 30, dt); // turn rate, for the gun's inertia
   // recoil: the buffered kick lands fast; once the trigger rests most of the climb comes back down, minus whatever the
   // player already pulled down against it (it used to recover on top of their correction and drag the aim low)
@@ -676,9 +692,9 @@ function updatePlayer(dt) {
   // aim assist: touch only, and only with the setting on
   if (IS_TOUCH && G.aimAssist && aimable) aimAssist(dt); else AAS.e = null;
   breathSway(dt, s, w, mx !== 0 || mz !== 0);
-  // ADS (a fresh press also starts the aim-assist pull)
+  // ADS (a fresh press also starts the aim-assist pull, unless the look is turning away from the target as the sights come up)
   const wantAds = (IS_TOUCH ? P.adsHeld : rmb || KEY.KeyZ) && aimable && P.reloadT <= 0 || (P.reloadT > 0 && P.shellMode && (IS_TOUCH ? P.adsHeld : rmb));
-  if (wantAds && !P.wantAds0) AAS.snap = .25; P.wantAds0 = !!wantAds;
+  if (wantAds && !P.wantAds0) AAS.snap = AAS.away > 0 ? 0 : .25; P.wantAds0 = !!wantAds;
   const adsSpeed = s ? 1 / s.st.adsT : 4;
   P.ads = clamp(P.ads + (wantAds && P.switchT <= 0 && (P.sprintK || 0) < .2 ? dt * adsSpeed : -dt * adsSpeed * 1.4), 0, 1);
   // sprint. The trigger (or a shot waiting on sprint-out) stops it: P.sprintBlock was set but never read, so pressing
@@ -784,16 +800,17 @@ function lerpAngle(a, b, t) { let d = b - a; d = Math.atan2(Math.sin(d), Math.co
 // Touch aim assist (Settings > Aim assist; never on a mouse). The look slows while the crosshair is over a visible enemy,
 // the sights pull gently onto one as they come up, and a light follow holds it while aiming or firing. The old version
 // was a constant 1.8-3.5/s magnet toward anything in a 3-5 degree cone, through walls and onto disguised shifters.
-// It never fights a turn: no pull while the view swings faster than ~90 deg/s or away from the target (and for .2 s
-// after), and the friction fades out on a fast swing. Only NPCs hostile to you are pulled onto; a bystander gets the
+// It never fights a turn: look input that widens the gap to the target, however slow, stops every pull for .2 s and
+// cancels a pending snap; a swing faster than ~90 deg/s stops it too, and the friction fades out on a fast swing. So it
+// only pulls while the finger rests or heads for the target. Only NPCs hostile to you are pulled onto; a bystander gets the
 // friction alone, and only once the crosshair is already right on them.
-const AAS = { e: null, t: 0, los: false, k: 0, snap: 0, hold: 0, host: true }, _aaO = new T.Vector3(), _aaF = new T.Vector3(), _aaC = new T.Vector3();
+const AAS = { e: null, t: 0, los: false, k: 0, snap: 0, hold: 0, away: 0, iy: 0, ip: 0, host: true }, _aaO = new T.Vector3(), _aaF = new T.Vector3(), _aaC = new T.Vector3();
 const aaBubble = (e, L, ads) => Math.atan2((ads ? 1.1 : .8) * e.scale, L) + .012; // angular radius around the chest
 const aaHostile = e => typeof hostileToPlayer !== 'function' || !!hostileToPlayer(e);
 function aimAssist(dt) {
   const ads = P.ads > .5, o = P.eyeInto(_aaO), f = P.fwdInto(_aaF);
   if (G.camMode === 'tpp' && G.state === 'city') o.copy(camera.position); // the crosshair's ray
-  AAS.t -= dt; AAS.snap -= dt; AAS.hold = Math.max(0, AAS.hold - dt);
+  AAS.t -= dt; AAS.snap -= dt; AAS.hold = Math.max(0, AAS.hold - dt); AAS.away = Math.max(0, AAS.away - dt);
   if (AAS.t <= 0) { // ~10 Hz: the enemy nearest the crosshair inside its bubble, then one line-of-sight ray for it
     AAS.t = .1; let best = null, bk = 1.25, bh = true;
     for (const e of ENEMIES) {
@@ -809,11 +826,12 @@ function aimAssist(dt) {
   _aaC.set(e.pos.x - o.x, e.pos.y + 1.2 * e.scale - o.y, e.pos.z - o.z); const L = _aaC.length(); _aaC.divideScalar(L);
   const a = Math.acos(clamp(_aaC.dot(f), -1, 1)), bub = aaBubble(e, L, ads); if (a > bub * 1.25) return;
   const ty = Math.atan2(-_aaC.x, -_aaC.z), tp = Math.asin(clamp(_aaC.y, -1, 1));
-  let ey = ty - P.yaw; ey = Math.atan2(Math.sin(ey), Math.cos(ey));
-  const rate = Math.hypot(P.lookVX || 0, P.lookVY || 0), away = rate > .25 && (P.lookVX || 0) * ey + (P.lookVY || 0) * (tp - P.pitch) < 0;
-  if (away || rate > 1.6) AAS.hold = .2;
+  let ey = ty - P.yaw; ey = Math.atan2(Math.sin(ey), Math.cos(ey)); const ep = tp - P.pitch, cp = Math.cos(P.pitch);
+  // turning away: the gap to the target now is wider than it was before this frame's look input (AAS.iy, AAS.ip)
+  if (Math.hypot(ey * cp, ep) > Math.hypot((ey + AAS.iy) * cp, ep + AAS.ip) + 1e-5) { AAS.away = .2; AAS.snap = 0; }
+  const rate = Math.hypot(P.lookVX || 0, P.lookVY || 0); if (rate > 1.6) AAS.hold = .2;
   AAS.k = smooth01(1 - a / bub) * (1 - smooth01((rate - 1.2) / 2.5)); // friction for next frame's look
-  if (AAS.hold > 0 || !AAS.host) return;
+  if (AAS.hold > 0 || AAS.away > 0 || !AAS.host) return;
   const r = AAS.snap > 0 && P.ads > .05 ? 5 : ads || G.t - P.lastFire < .2 ? 1.1 * AAS.k : 0;
   if (r > 0) { const k = Math.min(1, r * dt); P.yaw = lerpAngle(P.yaw, ty, k); P.pitch = lerp(P.pitch, tp, k); }
 }
@@ -902,7 +920,7 @@ function enterCar(c) {
   // drop whatever the hands were doing (a reload, swing or inspect used to resume mid-way on the way out)
   P.inCar = c; c.occ = true; P.ads = 0; P.adsHeld = false; P.reloadT = 0; P.shellMode = false; P.rStages = null; P.meleeT = 0; P.inspectT = 0; P.cycleT = 0; P.slide = 0; P.slideCam = 0; P.crouching = false; P.sprint = false; P.fireQ = 0; INP.brake = false;
   const ba = $('bAds'); if (ba) ba.classList.remove('on');
-  flashBanner('BEHIND THE WHEEL', IS_TOUCH ? 'Stick to drive · BRAKE slides · ACT gets out' : 'WASD drive · Space handbrake · E to exit', 1.4);
+  flashBanner('BEHIND THE WHEEL', IS_TOUCH ? 'Stick to drive · BRAKE slides · EXIT CAR gets out' : 'WASD drive · Space handbrake · E to exit', 1.4);
   AU.engineSet(true, 0);
 }
 function exitCar() {

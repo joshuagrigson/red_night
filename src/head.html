@@ -137,7 +137,9 @@ body.drive #bJump{--d:84px;--x:22px;--y:24px;font-size:calc(13px*var(--bs))}  /*
 body.drive #bFire,body.drive #bFire2,body.drive #bAds,body.drive #bCrouch,body.drive #bReload,body.drive #bMelee,body.touch.drive #hBR{display:none}
 #bFire2{width:calc(64px*var(--bs));height:calc(64px*var(--bs));left:calc(24px + var(--sl));bottom:calc(84px + var(--sb));border:2px solid var(--blood)!important}  /* Settings > Left fire */
 body:not(.lfire) #bFire2{display:none}
-#bAct{width:auto!important;min-width:96px;max-width:168px;min-height:48px;border-radius:4px!important;padding:5px 14px;right:calc(var(--cw) + 14px + var(--sr));bottom:calc(12px + var(--sb));border-color:var(--volt)!important;color:var(--volt)!important;background:rgba(10,10,12,.66)!important;font-size:11px!important;line-height:1.15;text-align:center;text-wrap:balance}  /* beside the cluster, two lines for the long labels */
+/* ACT sits beside the cluster and never reaches into the stick's side (the left 42%, player.js): --aw is the room between
+   them. Long labels wrap, and on the narrowest phone with big buttons the text steps down a size rather than split a word */
+#bAct{--aw:calc(58vw - var(--cw) - 14px - var(--sr));width:auto!important;min-width:min(96px,var(--aw));max-width:min(168px,var(--aw));min-height:48px;border-radius:4px!important;padding:5px 6px;right:calc(var(--cw) + 14px + var(--sr));bottom:calc(12px + var(--sb));border-color:var(--volt)!important;color:var(--volt)!important;background:rgba(10,10,12,.66)!important;font-size:clamp(9.5px,calc(var(--aw) / 9),11px)!important;letter-spacing:.05em!important;line-height:1.15;text-align:center;text-wrap:balance;overflow-wrap:anywhere}
 #bPause{width:48px;height:48px;right:calc(14px + var(--sr));top:calc(10px + var(--st));border-radius:8px!important;font-size:12px!important}
 #joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:1.5px solid rgba(255,255,255,.34);background:rgba(255,255,255,.05);opacity:0;pointer-events:none}
 #knob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,255,255,.24);border:1.5px solid rgba(255,255,255,.7)}
@@ -154,7 +156,7 @@ body.touch #prompt{display:none}  /* the ACT button carries the label on touch *
 /* under the crosshair and above ACT; on the narrowest phones it slides left just enough to clear the cluster */
 body.touch #banner{top:calc(50% + 18px);left:min(50%,calc(82% - var(--cw) - 12px - var(--sr)));right:auto;width:36%;padding:0;transform:translateX(-50%)}
 body.touch #banner h2{font-size:clamp(18px,3.2vw,24px)}
-body.touch #banner p{letter-spacing:.16em}
+body.touch #banner p{letter-spacing:.16em;text-wrap:balance}  /* a hint that wraps splits evenly instead of leaving one word under it */
 body:not(.touch) #touch{display:none}
 /* story.js broadcast: below the menus, out of the way of the HUD corners, hidden in menus and photo mode */
 #bcast{z-index:8!important;top:calc(var(--st) + 92px)!important;box-sizing:border-box;width:min(560px,86vw);min-height:4.4em}  /* a fixed frame: the text types into it instead of the box growing and re-centring */

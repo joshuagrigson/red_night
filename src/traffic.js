@@ -188,14 +188,18 @@ function gangDrive(dt) {
     } else if (S.st === 'parked' && d > 150 && !trafficInView(c.pos.x, c.pos.z)) gangHide(c);
   }
 }
-// one out of a door, aware, registered with the car's squad; never materialises in view inside 20 m. Purgers and sweepers
-// come for you (you're armed); a street crew rolls up to see what the shooting is
+// one out of a door, registered with the car's squad; never materialises in view inside 20 m. Purgers and sweepers come for
+// you, aware (you're armed); a street crew gets out to find its rivals, and you're only its business up close
 function gangDismount(c, force) {
   const S = c.gang, k = S.k, fx = -Math.sin(c.h), fz = -Math.cos(c.h), side = k % 2 ? 1 : -1;
   const p = _tvF.set(c.pos.x - fz * side * 1.7 + fx * (k < 2 ? .5 : -.9), 0, c.pos.z + fx * side * 1.7 + fz * (k < 2 ? .5 : -.9)); collideCircle(p, .45, 0, 1.8);
   const d = Math.hypot(p.x - P.pos.x, p.z - P.pos.z); if (!force && d < 20 && trafficInView(p.x, p.z)) return false;
-  const kind = S.kind || 'purger', e = new Enemy(kind === 'crew' ? 'crew' : kind, p.x, p.z, { aware: true, ranged: kind === 'purger' ? .8 : undefined, fac: S.fac, sq: S.sq });
-  e.sq = S.sq; e.lastKnown.set(P.pos.x + rand(-3, 3), 0, P.pos.z + rand(-3, 3)); e.face = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.reactT = rand(.6, 1.1); if (kind !== 'crew') e.frags = Math.random() < .5 ? rint(1, 2) : 0;
+  const kind = S.kind || 'purger', crew = kind === 'crew', e = new Enemy(kind, p.x, p.z, { aware: !crew, ranged: kind === 'purger' ? .8 : undefined, fac: S.fac, sq: S.sq });
+  e.sq = S.sq; e.face = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.reactT = rand(.6, 1.1);
+  if (crew) { // toward the nearest group it has a quarrel with, else on up the street the car was driving
+    let rv = null, bd = 80 * 80; for (const o of ENEMIES) { if (o.dead || !o.human || !factionHostile(e, o)) continue; const d2 = o.pos.distanceToSquared(c.pos); if (d2 < bd) { bd = d2; rv = o; } }
+    e.roam = rv ? rv.pos.clone() : new T.Vector3(c.pos.x + fx * rand(14, 24), 0, c.pos.z + fz * rand(14, 24)); collideCircle(e.roam, .6, 0, 1.8); e.roamT = rand(12, 20);
+  } else { e.lastKnown.set(P.pos.x + rand(-3, 3), 0, P.pos.z + rand(-3, 3)); e.frags = Math.random() < .5 ? rint(1, 2) : 0; }
   ENEMIES.push(e); const sp = spatial(e.pos); AU.nz(.12, 'lowpass', 900, 160, 1, .45 * sp.vol, sp.pan); // door slam
   if (k === 0 && typeof feed === 'function') feed(kind === 'sweeper' ? '<b>COUNCIL SWEEPERS</b> · A van just stopped' : kind === 'crew' ? `<b>${FACTIONS[S.fac].name.toUpperCase()}</b> · Rolling up` : '<b>PURGER CREW</b> · Pulling up on you');
   return true;

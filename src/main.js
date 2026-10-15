@@ -240,6 +240,10 @@ function updateClock(dt) {
   }
 }
 
+// the net layer's threat tags are for whoever is after you, not every armed neighbour on the street (digital.js tags every
+// visible NPC; the hostility rule lives with the factions, so the filter is applied here)
+if (typeof digTags === 'function' && !digTags.fac) { const dt0 = digTags; digTags = function () { dt0(); const tags = DIG.tags; for (let i = tags.length - 1; i >= 0; i--) if (tags[i].e && !hostileToPlayer(tags[i].e)) tags.splice(i, 1); }; digTags.fac = 1; }
+
 /* ---------- main loop ---------- */
 // title: slow dolly shots down each district's streets in the rain, cut through black
 const TITLE_SHOTS = [
@@ -297,7 +301,7 @@ function loop(now) {
     P.suppressed = Math.max(0, (P.suppressed || 0) - dt * .7);
     hudUpdate(dt);
   } else if (st === 'photo') {
-    if (G.lastSt !== 'photo') { for (const e of ENEMIES) if (e.R.pivot) e.R.pivot.visible = true; for (const c of CIVS) if (c.R.pivot) c.R.pivot.visible = true; } // the free camera can turn onto bodies the street camera had hidden
+    if (G.lastSt !== 'photo') { for (const e of ENEMIES) { if (e.R.pivot) e.R.pivot.visible = true; if (e.R.pieces) piecesShow(e.R, true); } for (const c of CIVS) if (c.R.pivot) c.R.pivot.visible = true; } // the free camera can turn onto bodies (and the caps and vests) the street camera had hidden
     if (typeof updatePhoto === 'function') updatePhoto(dt);
   } else if (st === 'smith' || st === 'paused' || st === 'pauseload') {
     if (G.pausedFrom === 'city' || G.prevState === 'city') { /* frozen world */ }

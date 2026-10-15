@@ -144,7 +144,7 @@ const HEAT = {
       let k = e.type === 'purger' || e.type === 'sweeper' ? (e.possessed ? .55 : .35) : .18; if (P.inCar && Math.abs(P.inCar.speed) > 5 && e.pos.distanceToSquared(P.inCar.pos) < 30) k += .3; this.add(k);
     }
     if (eyes) { this.calm = 0; this.lk.copy(P.pos); this.lkT = G.t; }
-    for (const c of CARS) if (c.dead && !c._hx) { c._hx = 1; if (c.pos.distanceToSquared(P.pos) < (c.lastHitBy === PLY ? 100 * 100 : 25 * 25)) this.add(.5); }
+    for (const c of CARS) if (c.dead && !c._hx) { c._hx = 1; const by = c.lastHitBy, d2 = c.pos.distanceToSquared(P.pos); if (by === PLY ? d2 < 100 * 100 : by && by.tg === PLY && d2 < 25 * 25) this.add(.5); } // yours, or one blown up shooting at you
   },
 };
 window.HEAT = HEAT;
@@ -416,6 +416,7 @@ function fighterAI(e, dt) {
     else if (dist < near) { e.moveToward(e.pos.x * 2 - px, e.pos.z * 2 - pz, spd * .7, dt); moving = true; }
     else { e.strafeT = (e.strafeT || 0) - dt; if (e.strafeT <= 0) { e.strafeT = rand(.9, 2.2); e.strafeS = Math.random() < .5 ? 1 : -1; } const s = e.strafeS * (e.supp > .4 ? 1.5 : 1); e.vel.x = damp(e.vel.x, -(pz - e.pos.z) / (dist || 1) * 2.4 * s, 4, dt); e.vel.z = damp(e.vel.z, (px - e.pos.x) / (dist || 1) * 2.4 * s, 4, dt); moving = true; }
   } else { e.vel.x = damp(e.vel.x, 0, 6, dt); e.vel.z = damp(e.vel.z, 0, 6, dt); }
+  if (lineStep(e, dt)) moving = true; // a friend in the line of fire: off it first
   // in cover: crouch, pop up to fire, duck when suppressed. Flanked cover is abandoned.
   let inCover = e.cover && e.pos.distanceTo(e.cover.p) <= .8;
   if (inCover && TG && (e.cvT = (e.cvT || 0) - dt) <= 0) { e.cvT = .5; if (aiLos(_av4.set(e.cover.p.x, 1.0, e.cover.p.z), tgEye(TG, _av5))) { e.cover = null; e.coverT = 0; inCover = false; } }
@@ -480,11 +481,12 @@ function watchAI(e, dt) {
   if (TG) {
     const tp = e.seesT ? TG.pos : e.lastKnown, dist = Math.hypot(tp.x - e.pos.x, tp.z - e.pos.z); e.tgD = dist; e.warnAim = 0;
     if (dh > 3.5) e.moveToward(h.x, h.z, e.speed, dt); else { e.vel.x = damp(e.vel.x, 0, 6, dt); e.vel.z = damp(e.vel.z, 0, 6, dt); }
+    const step = lineStep(e, dt);
     e.turnTo(tp.x, tp.z, dt, 9);
     // between shots they duck behind the car or the stoop they're standing at
     e.peekT = (e.peekT || 0) - dt; if (e.peekT <= 0) { e.peeking = !e.peeking || !e.seesT; e.peekT = e.peeking ? rand(1.4, 2.6) : rand(.6, 1.3) + (e.supp || 0); }
     e.st.crouch = e.peeking ? 0 : 1;
-    fighterShoot(e, dt, TG, dist, dh > 3.5);
+    fighterShoot(e, dt, TG, dist, dh > 3.5 || step);
     return;
   }
   e.st.crouch = 0; e.peeking = true; e.tgD = 99;
@@ -572,6 +574,27 @@ const _ef = new T.Vector3(), _efT = new T.Vector3(), _efD = new T.Vector3(), _ef
 const NPCRAY = { t: -1, n: 0 }, SHOTSND = { t: -9 };
 // cheap reject before a body's capsule test: is its bounding sphere anywhere near the ray?
 function rayNear(o, d, x, y, z, r, maxT) { const vx = x - o.x, vy = y - o.y, vz = z - o.z, t = vx * d.x + vy * d.y + vz * d.z; return t > -r && t < maxT + r && vx * vx + vy * vy + vz * vz - t * t < r * r; }
+// somebody on the shooter's side between it and the target, or on top of the target (a buddy in a melee with it): that round
+// is held. The corridor is this shot's spread cone (capped), so a clear line is a clear shot; an enemy standing in it is fair game
+function lineFriend(e, TG, from, at, spread) {
+  let ux = at.x - from.x, uz = at.z - from.z; const L = Math.hypot(ux, uz); if (L < 1.5) return null; ux /= L; uz /= L;
+  const ts = Math.tan(Math.min(spread, 10) * Math.PI / 180);
+  for (const o of ENEMIES) {
+    if (o === e || o === TG || o.dead || o.waitT >= 0 || (o.R && !o.R.root.visible)) continue;
+    const vx = o.pos.x - from.x, vz = o.pos.z - from.z, t = vx * ux + vz * uz; if (t < .2 || t > L + 1.5) continue;
+    const r = .45 * o.scale + t * ts, lat = vx * uz - vz * ux; if (lat * lat > r * r || hostile(e, o)) continue;
+    return o;
+  }
+  return null;
+}
+// hold the burst; with the friend in front, take a step to the side away from it (one at the target has to move first)
+function holdLine(e, o, from, at) {
+  let ux = at.x - from.x, uz = at.z - from.z; const L = Math.hypot(ux, uz) || 1; ux /= L; uz /= L;
+  const vx = o.pos.x - from.x, vz = o.pos.z - from.z, s = vx * uz - vz * ux > 0 ? -1 : 1;
+  if (vx * ux + vz * uz < L - 1.5) { e.lineX = uz * s; e.lineZ = -ux * s; e.lineT = rand(.5, .8); }
+  e.burst = 0; e.cd = Math.min(e.cd, rand(.3, .6));
+}
+function lineStep(e, dt) { if (!(e.lineT > 0)) return false; e.lineT -= dt; e.vel.x = damp(e.vel.x, e.lineX * 2.6, 10, dt); e.vel.z = damp(e.vel.z, e.lineZ * 2.6, 10, dt); return true; }
 // a fight down the block is a texture, not every round: distant shots share one voice slot
 function npcShotSound(e) {
   const d2 = e.pos.distanceToSquared(P.pos); if (d2 > 170 * 170) return;
@@ -605,6 +628,7 @@ function enemyFire(e, dmg, dist, moving) {
     spread = (1.3 + dist * .04 + tv * .45 + e.supp * 4 + (moving ? 1.6 : 0)) * (e.shotsAt > 1 ? 1 : 1.4);
   }
   if (e.wst && e.wst.spread) spread *= e.wst.spread;
+  if (e.human) { const fr = lineFriend(e, TG, from, _efT, spread); if (fr) { holdLine(e, fr, from, _efT); return; } }
   const d = _efD.subVectors(_efT, from).normalize(); const r = Math.sqrt(Math.random()) * spread * Math.PI / 180, a = Math.random() * TAU;
   const right = _efR.set(-d.z, 0, d.x).normalize(), up = _efU.crossVectors(right, d);
   d.addScaledVector(right, Math.cos(a) * Math.tan(r)).addScaledVector(up, Math.sin(a) * Math.tan(r)).normalize();
@@ -641,7 +665,7 @@ function throwMolotov(e, at) {
   const from = e.pos.clone().setY(1.6); const to = at.clone().add(new T.Vector3(rand(-2, 2), 0, rand(-2, 2)));
   const T0 = .95; const v = to.clone().sub(from).divideScalar(T0); v.y = (to.y - from.y + .5 * 9.8 * T0 * T0) / T0;
   const m = new T.Group(); m.add(new T.Mesh(gBox(.08, .22, .08), STD(0x3a6a2a, .2, .1))); const fl = glowSprite(0, .14, 0, lc(0xff8a20), .8, m); m.position.copy(from); scene.add(m);
-  MOLOS.push({ m, v, t: 0, by: e }); e.atk = e.atkDur = .5; if (e.pos.distanceToSquared(P.pos) < 30 * 30) AU.swish(false);
+  MOLOS.push({ m, v, t: 0, by: e, atP: e.tg === PLY }); e.atk = e.atkDur = .5; if (e.pos.distanceToSquared(P.pos) < 30 * 30) AU.swish(false);
   if (at.distanceToSquared(P.pos) < 14 * 14) feed('<b>MOLOTOV</b> · Move!');
 }
 function updateMolotovs(dt) {
@@ -653,7 +677,7 @@ function updateMolotovs(dt) {
       const s = spatial(p); AU.play('glass_shatter', { vol: .7 * s.vol, pan: s.pan }); AU.play('fire_whoosh', { vol: .8 * s.vol, pan: s.pan }) || AU.nz(.8, 'lowpass', 1200, 200, 1, .5 * s.vol, s.pan);
       const fires = []; for (let k = 0; k < 5; k++) { const f = { p: p.clone().add(new T.Vector3(rand(-1.6, 1.6), .2, rand(-1.6, 1.6))), s: rand(.7, 1.1) }; FIRES.push(f); fires.push(f); }
       const ls = { p: p.clone().setY(1.5), c: new T.Color(0xff6a10), i: 4, d: 16, f: 1, aiFire: 1 }; LS.push(ls);
-      FIREZONES.push({ p, r: 3.2, t: 6.5, fires, ls, src: { dot: 1, by: o.by } }); makeNoise(p, 40, 'fire', o.by); if (p.distanceToSquared(P.pos) < 30 * 30) HEAT.add(.12);
+      FIREZONES.push({ p, r: 3.2, t: 6.5, fires, ls, src: { dot: 1, by: o.by } }); makeNoise(p, 40, 'fire', o.by); if (p.distanceToSquared(P.pos) < (o.atP ? 30 * 30 : 5 * 5)) HEAT.add(.12); // thrown at you, or right on you
     }
   }
   for (let i = FIREZONES.length - 1; i >= 0; i--) {
@@ -676,7 +700,7 @@ function fragGet() {
   const led = new T.Mesh(FRAGM.led, NEON(0xff2020)); led.position.y = .066; m.add(led);
   const rm = new T.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, blending: T.AdditiveBlending });
   const ring = new T.Mesh(FRAGM.ring, rm); ring.renderOrder = 4; m.visible = ring.visible = false; scene.add(m, ring);
-  const g = { m, led, ring, rm, p: m.position, v: new T.Vector3(), fuse: 0, live: false, owner: null, src: { dot: 1, by: null, blast: 1 }, sq: 0, beepT: 0, pulse: 0, rest: false, touched: false };
+  const g = { m, led, ring, rm, p: m.position, v: new T.Vector3(), fuse: 0, live: false, owner: null, src: { dot: 1, by: null, blast: 1 }, sq: 0, atP: false, beepT: 0, pulse: 0, rest: false, touched: false };
   FRAGS.push(g); return g;
 }
 const fragLive = sq => { for (const g of FRAGS) if (g.live && g.sq === sq) return true; return false; };
@@ -697,7 +721,7 @@ function throwFrag(e, at) {
   g.p.set(e.pos.x - Math.sin(e.face) * .35, 1.7 * e.scale, e.pos.z - Math.cos(e.face) * .35);
   const er = 1 + Math.hypot(at.x - e.pos.x, at.z - e.pos.z) * .05, tx = at.x + rand(-er, er), tz = at.z + rand(-er, er), dx = tx - g.p.x, dz = tz - g.p.z;
   const T0 = clamp(Math.hypot(dx, dz) / 13, .75, 1.45); g.v.set(dx / T0, (.12 - g.p.y + 4.9 * T0 * T0) / T0, dz / T0);
-  g.fuse = 2.5; g.live = true; g.rest = false; g.touched = false; g.owner = e; g.src.by = e; g.sq = e.sq || 0; g.beepT = .2; g.pulse = 0; g.m.visible = true; g.ring.visible = false;
+  g.fuse = 2.5; g.live = true; g.rest = false; g.touched = false; g.owner = e; g.src.by = e; g.sq = e.sq || 0; g.atP = e.tg === PLY; g.beepT = .2; g.pulse = 0; g.m.visible = true; g.ring.visible = false;
   e.atk = e.atkDur = .5; e.frags--; e.fragCd = rand(10, 16); FRAGSQ[g.sq] = G.t; if (e.pos.distanceToSquared(P.pos) < 30 * 30) AU.swish(false);
   if (G.t - _fragFeedT > 6 && Math.hypot(at.x - P.pos.x, at.z - P.pos.z) < 16) { _fragFeedT = G.t; feed('<b>GRENADE</b> · Get clear!'); }
   return true;
@@ -739,7 +763,7 @@ function fragBlast(g) {
   const fall = d => 1 - Math.max(0, d - 1.5) / (FRAG_R - 1.5);
   if (pd < FRAG_R && !P.dead && (aiLos(c0, _av3.set(P.pos.x, P.pos.y + 1, P.pos.z)) || aiLos(c0, _av3.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z)))) {
     const k = fall(pd), own = g.owner && ET[g.owner.type] ? g.owner : null;
-    if (P.inCar) { const c = P.inCar; carHit(c, 320 * k, _av4.set(c.pos.x, .8, c.pos.z), _av5.set(p.x - c.pos.x, 0, p.z - c.pos.z).normalize(), false); damagePlayer(30 * k, p, own); }
+    if (P.inCar) { const c = P.inCar; carHit(c, 320 * k, _av4.set(c.pos.x, .8, c.pos.z), _av5.set(p.x - c.pos.x, 0, p.z - c.pos.z).normalize(), false, g.owner); damagePlayer(30 * k, p, own); }
     else damagePlayer(10 + 105 * k, p, own);
     P.suppressed = 1;
   }
@@ -749,7 +773,7 @@ function fragBlast(g) {
   }
   for (const c of CIVS) { if (c.dead) continue; const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z); if (d < FRAG_R && aiLos(c0, _av3.set(c.pos.x, 1, c.pos.z))) c.hurt(20 + 160 * fall(d), g.owner); }
   for (const c of CARS) { if (c.gone || c === P.inCar) continue; const dx = c.pos.x - p.x, dz = c.pos.z - p.z, d = Math.hypot(dx, dz); if (d < 6) carHit(c, 280 * (1 - d / 6), _av4.set(c.pos.x - dx * .4, .8, c.pos.z - dz * .4), _av5.set(-dx, 0, -dz).normalize(), false, g.owner); }
-  if (pd < 30 || (g.owner && g.owner.tg === PLY)) HEAT.add(.25); makeNoise(p, 55, 'blast', g.owner); trafficPanic(p);
+  if (g.atP || pd < FRAG_R) HEAT.add(.25); makeNoise(p, 55, 'blast', g.owner); trafficPanic(p); // the street's own fights don't light you up
 }
 
 /* ---------- civilians: crowds that walk the sidewalks in groups ---------- */
@@ -896,7 +920,7 @@ class Civ {
     this.sync();
   }
   sync() { this.R.root.position.copy(this.pos); if (this.R.crouchW) this.R.root.position.y -= this.R.crouchW * .17; this.R.root.rotation.y = this.face; } // knees bent behind a car: drop the hips like Enemy.sync does
-  remove() { this.gone = true; scene.remove(this.R.root); const i = CIVS.indexOf(this); if (i >= 0) CIVS.splice(i, 1); if (this.grp) this.grp.members = this.grp.members.filter(m => m !== this); }
+  remove() { this.gone = true; scene.remove(this.R.root); rigDispose(this.R); const i = CIVS.indexOf(this); if (i >= 0) CIVS.splice(i, 1); if (this.grp) this.grp.members = this.grp.members.filter(m => m !== this); }
 }
 /* a group walks a loop around a block on the sidewalk (centre line 6 m in from the road centre),
    turning at corners or crossing the street to the next block; some groups stand and chat */
@@ -991,7 +1015,7 @@ function aiNightReset() {
   CIVHID.length = 0; for (const c of CARS) c._hx = 0;
   for (let i = LS.length - 1; i >= 0; i--) if (LS[i].aiFire) LS.splice(i, 1);
   if (typeof STORY !== 'undefined') STORY.wave = 0;
-  SQLEAD.clear(); if (typeof SPAWN !== 'undefined') SPAWN.posts.length = 0;
+  SQLEAD.clear(); if (typeof SPAWN !== 'undefined') SPAWN.posts.length = SPAWN.pairs.length = 0;
   if (typeof trafficNightReset === 'function') trafficNightReset();
   if (typeof interiorsReset === 'function') interiorsReset();
 }

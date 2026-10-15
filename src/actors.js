@@ -88,7 +88,7 @@ function rigAttach(R, bone, mesh, p) {
   bone.getWorldScale(_faS); g.scale.setScalar(1 / (_faS.x || 1)); g.position.copy(bone.worldToLocal(p)); return g;
 }
 function fattach(e, kind) {
-  const R = e.R, mesh = new T.Mesh(fattGeo(kind), fattMat(kind, e.fac)); mesh.castShadow = false;
+  const R = e.R, mesh = new T.Mesh(fattGeo(kind), fattMat(kind, e.fac)); mesh.castShadow = false; (R.pieces || (R.pieces = [])).push(mesh); // a draw call each: shown only up close (update)
   if (!R.glb) { // the box rig: head centre at (0, .1, 0) on R.head, chest box on R.chest, facing -Z
     const body = kind === 'bag' || kind === 'vest'; (body ? R.chest : R.head).add(mesh);
     if (kind === 'cap') mesh.position.set(0, .17, .005); else if (kind === 'helmet') mesh.position.set(0, .16, 0); else if (kind === 'band') mesh.position.set(0, .04, -.01);
@@ -103,6 +103,8 @@ function fattach(e, kind) {
   else { bone = sp; k = (CHARS[R.glb].h || 1.8) / 1.8; _faP.set(a.x, s.y + (kind === 'bag' ? .02 : .05), s.z + (kind === 'bag' ? .19 : -.02)); }
   rigAttach(R, bone, mesh, _faP).scale.multiplyScalar(k);
 }
+const PIECE_D2 = () => G.quality === 'high' ? 34 * 34 : 26 * 26;
+function piecesShow(R, on) { R.piecesOn = on; for (const m of R.pieces) m.visible = on; }
 
 function maskTex(kind) {
   const [c, x] = cvs(128, 128); x.fillStyle = '#0a0a0e'; x.fillRect(0, 0, 128, 128);
@@ -256,6 +258,10 @@ const ET = {
 };
 const ENEMIES = [], WISPS = [], PROJ = [];
 let enemyId = 0;
+// rigs built this frame: past the budget, a deferred one waits for the next frame
+const BUILDS = { t: -1, n: 0 };
+function buildsNow() { if (BUILDS.t !== G.t) { BUILDS.t = G.t; BUILDS.n = 0; } return BUILDS; }
+const buildSlot = () => buildsNow().n < (G.quality === 'high' ? 3 : 2);
 // scanned model per type, and every model a type can end up wearing (the shapeshifter's beast, the reptilian under the suit)
 const ENEMY_GLB = { purger: 'purger', demon: 'demon', vampire: 'vampire', shifter: 'civilian', reptile: 'suit', witch: 'witch' };
 const ENEMY_NEEDS = { purger: ['purger'], demon: ['demon'], vampire: ['vampire'], shifter: ['civilian', 'beast'], reptile: ['suit', 'reptile'], witch: ['witch'], watch: [], crew: [], looter: [], sweeper: [] }; // the people wear the boot-set crowd bodies
@@ -316,12 +322,14 @@ class Enemy {
       this.st.hold = 'cast';
     }
     this.o = o;
-    // a type whose models are still streaming in waits, unseen and untouchable, and materialises when they land
-    if (enemyPending(type)) { this.R = { root: new T.Group() }; this.R.root.visible = false; scene.add(this.R.root); this.waitT = 0; wantEnemy(type); }
+    // a type whose models are still streaming in waits, unseen and untouchable, and materialises when they land. So does a member
+    // of a group (opts.defer): a rig costs 1-3 ms on a phone, so a squad builds a couple a frame instead of all in one
+    const pend = enemyPending(type);
+    if (pend || (opts && opts.defer)) { this.R = { root: new T.Group() }; this.R.root.visible = false; scene.add(this.R.root); this.waitT = 0; if (pend) wantEnemy(type); }
     else this.build();
   }
   build() {
-    const type = this.type; let R = null;
+    const type = this.type; let R = null; buildsNow().n++;
     if (this.human && type !== 'purger') { // a crowd body, recoloured, with the faction's pieces on it
       const L = FLOOK[this.fac], id = CHARS_READY && [this.rig, ...L.rigs].find(k => CHARS[k] && CHARS[k].scene);
       R = id ? makeGLBRig(id) : null;
@@ -378,10 +386,11 @@ class Enemy {
     this.vel.x = damp(this.vel.x, vx, 8, dt); this.vel.z = damp(this.vel.z, vz, 8, dt);
   }
   update(dt) {
-    if (this.waitT >= 0) { this.waitT += dt; if (enemyPending(this.type) && this.waitT < 12) return; scene.remove(this.R.root); this.waitT = -1; this.build(); } // models landed (or gave up: box rig)
+    if (this.waitT >= 0) { this.waitT += dt; if ((enemyPending(this.type) && this.waitT < 12) || !buildSlot()) return; scene.remove(this.R.root); this.waitT = -1; this.build(); } // models landed (or gave up: box rig) and this frame has room for a rig
     this.t += dt; this.st.t = this.t;
     const d2 = this.dist2(), dist = Math.sqrt(d2);
     { const C = camFrame(), cx = this.pos.x - camera.position.x, cz = this.pos.z - camera.position.z; this.camD2 = cx * cx + cz * cz; this.unseen = this.camD2 > 4900 && cx * C.x + cz * C.z < Math.sqrt(this.camD2) * C.cos; if (this.R.pivot) this.R.pivot.visible = bodyInView(this.pos.x, this.pos.z, this.camD2); }
+    if (this.R.pieces) { const pv = this.camD2 < PIECE_D2(); if (this.R.piecesOn !== pv) piecesShow(this.R, pv); } // past ~26 m the body colour and the faction rim carry the read
     if (this.dead) {
       this.deadT += dt; this.st.death = this.deadT * 2.2; this.st.speed = 0; if (this.R.glb) { if (this.deadT < 6) animGLB(this.R, this.st, dt); } else animRig(this.R, this.st, dt);
       const sink = this.killedByP || !this.human ? 7 : 14; // the street's own dead lie there a while: it's how you know what happened
@@ -525,21 +534,27 @@ class Enemy {
   blink() { this.vanish = .9; this.R.root.visible = false; burst(FXA, this.pos.clone().setY(this.pos.y + 1.2), 30, 5, .8, .3, .05, COL.purple, 0, .2, 1, 1); this.cd = Math.max(this.cd, .8); }
   swapRig(id) {
     const nr = CHARS_READY && makeGLBRig(id); if (!nr) return false;
-    scene.remove(this.R.root); this.R = nr; nr.root.scale.setScalar(this.scale); scene.add(nr.root); this.sync(); this.eyesOn(); this.hH = charHeadY(id);
-    burst(FXN, this.pos.clone().setY(1.2), 46, 4, 1.1, .35, 1.2, COL.smoke, -.3, .4, .8, 1.5); burst(FXN, this.pos.clone().setY(1.2), 24, 5, .7, .12, .05, COL.blood, 9);
+    scene.remove(this.R.root); rigDispose(this.R); this.R = nr; nr.root.scale.setScalar(this.scale); scene.add(nr.root); this.sync(); this.eyesOn(); this.hH = charHeadY(id);
+    if (!this.unseen) { burst(FXN, this.pos.clone().setY(1.2), 46, 4, 1.1, .35, 1.2, COL.smoke, -.3, .4, .8, 1.5); burst(FXN, this.pos.clone().setY(1.2), 24, 5, .7, .12, .05, COL.blood, 9); }
     return true;
   }
-  transform() { if (this.mode !== 'disguise') return; this.mode = 'morph'; this.morphT = 0; this.hp = this.maxHp = 320; if (this.R.glb) this.swapRig('beast'); AU.roar(spatial(this.pos).pan, 1); shake(.15); flashBanner('SHAPESHIFTER', 'It was never a person', 1.6); }
+  // a disguise that drops on you or in front of you gets the banner and the full cue; one a stray round unmasks down the block just happens
+  nearYou() { if (this.dist2() < 25 * 25) return true; const C = camFrame(), cx = this.pos.x - camera.position.x, cz = this.pos.z - camera.position.z, d2 = cx * cx + cz * cz; return d2 < 45 * 45 && cx * C.x + cz * C.z > Math.sqrt(d2) * C.cos; }
+  transform() {
+    if (this.mode !== 'disguise') return; this.mode = 'morph'; this.morphT = 0; this.hp = this.maxHp = 320; if (this.R.glb) this.swapRig('beast');
+    const near = this.nearYou(), s = spatial(this.pos); AU.roar(s.pan, near ? 1 : s.vol); if (near) { shake(.15); flashBanner('SHAPESHIFTER', 'It was never a person', 1.6); }
+  }
   reveal() {
     if (this.mode !== 'disguise') return; this.mode = 'morph'; this.morphT = 0; this.hp = this.maxHp = Math.max(this.hp, 190);
-    if (this.R.glb) { this.swapRig('reptile'); this.st.hold = 'claw'; AU.hiss(spatial(this.pos).pan, 1); flashBanner('REPTILIAN', 'The suit was a skin', 1.6); return; }
+    const near = this.nearYou(), s = spatial(this.pos); AU.hiss(s.pan, near ? 1 : s.vol);
+    if (this.R.glb) { this.swapRig('reptile'); this.st.hold = 'claw'; if (near) flashBanner('REPTILIAN', 'The suit was a skin', 1.6); return; }
     const scale = new T.MeshStandardMaterial({ map: camoTex('scales').map, roughness: .5, metalness: .2 });
     this.R.skull.material = scale; this.R.mats.skin.color.copy(lc(0x2a6a2a)); this.R.eyes.forEach(e => { e.material = NEON(0xf3e600); e.scale.set(.4, 2.4, 1); });
     this.R.head.children.forEach(c => { if (c.material && c.material.metalness === 1) c.visible = false; });
     // grow a tail
     this.R.tail = []; let par = this.R.hips; const tm = this.o.tailMat;
     for (let i = 0; i < 6; i++) { const seg = new T.Group(); seg.position.set(0, i === 0 ? -.05 : 0, i === 0 ? .1 : .16); par.add(seg); const m = new T.Mesh(gLimb(.05 - i * .007, .045 - i * .007, .17), tm); m.rotation.x = Math.PI / 2; seg.add(m); seg.scale.setScalar(.01); this.R.tail.push(seg); par = seg; }
-    this.st.hold = 'claw'; AU.hiss(spatial(this.pos).pan, 1); flashBanner('REPTILIAN', 'The suit was a skin', 1.6);
+    this.st.hold = 'claw'; if (near) flashBanner('REPTILIAN', 'The suit was a skin', 1.6);
   }
   possess() {
     if (this.waitT >= 0 || this.dead) return;
@@ -582,22 +597,25 @@ class Enemy {
     this.dead = true; this.deadT = 0; this.vel.set(0, 0, 0); this.R.root.visible = true; this.pos.y = 0;
     if (dir) { const fwd = new T.Vector3(-Math.sin(this.face), 0, -Math.cos(this.face)); this.st.fallDir = fwd.dot(dir) > 0 ? -1 : 1; }
     const c = this.pos.clone().setY(1.2), fx = !this.unseen; // a death nobody can see doesn't spend particles
-    if (this.type === 'demon') { fx && burst(FXA, c, 50, 6, 1.2, .3, .02, COL.ember, -1, .3, 1, 1); this.R.root.visible = false; this.deadT = 8.4; spawnWisp(this.pos.x, this.pos.z, 'player'); AU.roar(spatial(this.pos).pan, 1); }
-    else if (this.type === 'vampire') { fx && burst(FXN, c, 50, 3, 1.6, .35, .7, COL.ash, -.5, .4, .9, 1); this.R.root.visible = false; this.deadT = 8.4; AU.screech(spatial(this.pos).pan, 1); }
-    else if (this.type === 'witch') { fx && burst(FXA, c, 60, 7, 1.2, .35, .02, COL.purple, 0, .2, 1, 1); this.R.root.visible = false; this.deadT = 8.4; AU.cackle(spatial(this.pos).pan, 1); }
+    // the demon in a body goes looking for another: yours only if you were the one who freed it. Somebody else's kill is heard from where it happened
+    const wisp = by === PLY ? 'player' : 'npc', sp = spatial(this.pos), vol = by === PLY ? 1 : sp.vol;
+    if (this.type === 'demon') { fx && burst(FXA, c, 50, 6, 1.2, .3, .02, COL.ember, -1, .3, 1, 1); this.R.root.visible = false; this.deadT = 8.4; spawnWisp(this.pos.x, this.pos.z, wisp); AU.roar(sp.pan, vol); }
+    else if (this.type === 'vampire') { fx && burst(FXN, c, 50, 3, 1.6, .35, .7, COL.ash, -.5, .4, .9, 1); this.R.root.visible = false; this.deadT = 8.4; AU.screech(sp.pan, vol); }
+    else if (this.type === 'witch') { fx && burst(FXA, c, 60, 7, 1.2, .35, .02, COL.purple, 0, .2, 1, 1); this.R.root.visible = false; this.deadT = 8.4; AU.cackle(sp.pan, vol); }
     else if (this.type === 'reptile') { fx && burst(FXN, c, 26, 4, .9, .12, .05, COL.green, 9); }
     else if (this.type === 'shifter') { fx && burst(FXN, c, 30, 4, .9, .14, .05, COL.ichor, 9); }
     else if (fx) burst(FXN, c, 22, 3.5, .8, .12, .05, COL.blood, 9);
     if (this.R.glb) this.st.deathClip = 'fall';
     if (part === 'head' && (src && src.big)) { if (this.R.glb) this.R.head.scale.setScalar(.001); else this.R.head.visible = false; fx && burst(FXN, this.headPos(), 26, 5, .8, .12, .05, this.type === 'reptile' ? COL.green : COL.blood, 9); }
-    if (this.possessed) spawnWisp(this.pos.x, this.pos.z, 'player');
+    if (this.possessed) spawnWisp(this.pos.x, this.pos.z, wisp);
     decal(new T.Vector3(this.pos.x, .02, this.pos.z), new T.Vector3(0, 1, 0), rand(1.4, 2.4), splatTex, this.type === 'reptile' ? 0x1a8a2a : this.type === 'demon' || this.type === 'vampire' || this.type === 'witch' ? 0x1a1a1a : 0x5a0010);
     this.tg = null; this.burst = 0; this.hitPending = null;
     if (by === PLY) { this.killedByP = true; onKill(this, part, src); } else npcKilled(this, by); // only your kills score, pay out and drop ammo
   }
-  remove() { this.gone = true; scene.remove(this.R.root); const i = ENEMIES.indexOf(this); if (i >= 0) ENEMIES.splice(i, 1); }
+  remove() { this.gone = true; scene.remove(this.R.root); rigDispose(this.R); const i = ENEMIES.indexOf(this); if (i >= 0) ENEMIES.splice(i, 1); }
 }
-/* ---------- wisps: demons between bodies ---------- */
+/* ---------- wisps: demons between bodies. target 'player': you freed it, and it wants you; 'npc': somebody else did, and it
+   rides the nearest purger or thins out where it rose ---------- */
 function spawnWisp(x, z, target) {
   const g = new T.Group(); g.position.set(x, 1.4, z); scene.add(g);
   const core = new T.Mesh(gSph(.18), NEON(0xff3a10)); g.add(core);
@@ -608,21 +626,24 @@ function spawnWisp(x, z, target) {
 function updateWisps(dt) {
   for (let i = WISPS.length - 1; i >= 0; i--) {
     const w = WISPS[i]; w.t += dt; w.life -= dt;
-    // prefer a living purger to ride; else the player
+    // prefer a living purger to ride; else the player, if it's the player's
     let tgt = null, best = 30 * 30;
     if (w.t > 1.2) for (const e of ENEMIES) { if (e.dead || e.type !== 'purger' || e.possessed || e.waitT >= 0) continue; const d = e.pos.distanceToSquared(w.pos); if (d < best) { best = d; tgt = e; } }
-    const tp = tgt ? _wT.copy(tgt.pos).setY(1.4) : _wT.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z);
+    const mine = w.target === 'player'; if (!tgt && !mine && w.t > 1.2 && w.life > 3) w.life = 3;
+    const tp = tgt ? _wT.copy(tgt.pos).setY(1.4) : mine ? _wT.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z) : _wT.set(w.pos.x, 2.4, w.pos.z);
     const dir = _wD.copy(tp).sub(w.pos); const L = dir.length();
-    const spd = w.t < 1.2 ? 1 : 7.5;
-    w.pos.addScaledVector(dir.normalize(), spd * dt); w.pos.y += Math.sin(w.t * 6) * .01;
-    w.g.lookAt(tp);
-    if (Math.random() < .6) FXA.emit(w.pos.x, w.pos.y, w.pos.z, rand(-.3, .3), rand(-.3, .3), rand(-.3, .3), .5, .3, .05, COL.ember, .8);
-    if (Math.random() < .3) FXN.emit(w.pos.x, w.pos.y, w.pos.z, 0, .4, 0, .9, .3, .8, COL.smoke, .5);
-    if (L < .8 && w.t > 1.2) {
+    const spd = w.t < 1.2 || !(tgt || mine) ? 1 : 7.5;
+    w.pos.addScaledVector(dir.normalize(), Math.min(spd * dt, L)); w.pos.y += Math.sin(w.t * 6) * .01;
+    if (L > .01) w.g.lookAt(tp);
+    if (w.pos.distanceToSquared(camera.position) < 80 * 80) {
+      if (Math.random() < .6) FXA.emit(w.pos.x, w.pos.y, w.pos.z, rand(-.3, .3), rand(-.3, .3), rand(-.3, .3), .5, .3, .05, COL.ember, .8);
+      if (Math.random() < .3) FXN.emit(w.pos.x, w.pos.y, w.pos.z, 0, .4, 0, .9, .3, .8, COL.smoke, .5);
+    }
+    if (L < .8 && w.t > 1.2 && (tgt || mine)) {
       if (tgt) tgt.possess(); else if (!P.dead && !P.inCar) startPossession(); else if (P.inCar) { w.life = 0; }
       if (tgt || !P.dead) { scene.remove(w.g); WISPS.splice(i, 1); continue; }
     }
-    if (w.hp <= 0 || w.life <= 0) { burst(FXA, w.pos, 30, 5, .7, .25, .02, COL.ember, 0, 0, 1, 1); scene.remove(w.g); WISPS.splice(i, 1); }
+    if (w.hp <= 0 || w.life <= 0) { if (w.pos.distanceToSquared(camera.position) < 80 * 80) burst(FXA, w.pos, 30, 5, .7, .25, .02, COL.ember, 0, 0, 1, 1); scene.remove(w.g); WISPS.splice(i, 1); }
   }
 }
 /* ---------- enemy attacks ---------- */
@@ -705,7 +726,7 @@ function splash(at, p) {
 /* ---------- the director: the purge is everyone against everyone. Factions spawn as groups: often two hostile ones a block
    ahead of you, already at it; Block Watch on the porches, looters at the shopfronts, sweep teams after midnight. It gets
    worse every hour, and the supernatural turns up only as far as the setting allows ---------- */
-const SPAWN = { t: 2, first: true, chk: 0, sq: 5000, posts: [], ev: {} };
+const SPAWN = { t: 2, first: true, chk: 0, sq: 5000, posts: [], pairs: [], ev: {} };
 const _spP = new T.Vector3(), _spA = new T.Vector3(), _spB = new T.Vector3();
 let _npcFeedT = -99;
 // somebody else's kill: no score, no ammo, at most a line in the feed when it was close
@@ -744,6 +765,7 @@ function pickEvent(hour, heat, room) {
   let sum = 0; for (const k in W) sum += W[k]; let r = Math.random() * sum; for (const k in W) { r -= W[k]; if (r <= 0 && W[k] > 0) return k; } return 'purgers';
 }
 function updateSpawns(dt) {
+  if (SPAWN.pairs.length) clashPairs();
   if (P.dead || G.state !== 'city' || G.inside) return;
   if ((SPAWN.chk -= dt) <= 0) { SPAWN.chk = 1; spawnRecycle(); if (G.supernatural === 'rare' && G.hour >= 2 && typeof charStreamMore === 'function') charStreamMore(); } // rare: an hour ahead of when they can turn up
   // more people out, and more often, every hour; a hot night (the AI's HEAT, 0..5) brings them faster still
@@ -777,30 +799,39 @@ function spawnEvent(kind, room) {
   }
   if (kind === 'post') return spawnPost(room, null);
   if (kind === 'loot') return spawnLooters(room);
-  if (kind === 'crew') { const pt = spawnPoint(42, 70); if (!pt) return false; spawnSquad('crew', pick(['eastline', 'rails']), pt.x, pt.z, Math.min(room, rint(3, 5)), {}); return true; }
+  if (kind === 'crew') { // a crew walking its streets, or one rolling up in a car
+    if (Math.random() < .35 && typeof gangCall === 'function' && gangCall('crew')) return true;
+    const pt = spawnPoint(42, 70); if (!pt) return false; spawnSquad('crew', pick(['eastline', 'rails']), pt.x, pt.z, Math.min(room, rint(3, 5)), {}); return true;
+  }
   if (kind === 'sweep') { // a sweep team hunting anything armed, you included: some by van, some on foot
     if (Math.random() < .4 && typeof gangCall === 'function' && gangCall('sweeper')) return true;
     const pt = spawnPoint(55, 85); if (!pt) return false; spawnSquad('sweeper', 'sweeper', pt.x, pt.z, Math.min(room, rint(3, 4)), { aware: true }); return true;
   }
   return false;
 }
-// n of one faction around (x, z), one squad (loose: no squad, the v21 street purger)
+// n of one faction around (x, z), one squad (loose: no squad, the v21 street purger). They materialise over the next few frames
 function spawnSquad(type, fac, x, z, n, o, loose) {
   const sq = loose ? 0 : ++SPAWN.sq, out = [];
   for (let i = 0; i < n; i++) {
     const a = i / n * TAU + rand(-.4, .4), r = i ? rand(1.4, 3.2) : 0, p = _spP.set(x + Math.cos(a) * r, 0, z + Math.sin(a) * r); collideCircle(p, .5, 0, 1.8);
-    const e = new Enemy(type, p.x, p.z, Object.assign({ fac, sq }, o)); ENEMIES.push(e); out.push(e);
+    const e = new Enemy(type, p.x, p.z, Object.assign({ fac, sq, defer: true }, o)); ENEMIES.push(e); out.push(e);
   }
   return out;
 }
-// two hostile groups, each on the other: mutual targets and a squad grudge, so the rules can't talk them out of it
+// two hostile groups, each on the other: mutual targets and a squad grudge, so the rules can't talk them out of it.
+// Set once both sides have materialised (a target that is still building would be dropped)
 function spawnClash(fa, fb, ax, az, bx, bz, na, nb) {
   const A = spawnSquad(F2T(fa), fa, ax, az, na, {}), B = spawnSquad(F2T(fb), fb, bx, bz, nb, {});
-  clashOn(A, B); clashOn(B, A); return [A, B];
+  SPAWN.pairs.push([A, B]); return [A, B];
+}
+function clashPairs() {
+  const building = X => X.some(e => e.waitT >= 0 && !e.gone);
+  for (let i = SPAWN.pairs.length - 1; i >= 0; i--) { const [A, B] = SPAWN.pairs[i]; if (building(A) || building(B)) continue; SPAWN.pairs.splice(i, 1); clashOn(A, B); clashOn(B, A); }
 }
 function clashOn(X, Y) {
   for (const e of X) {
-    let best = null, bd = 1e9; for (const o of Y) { const d = o.pos.distanceToSquared(e.pos); if (d < bd) { bd = d; best = o; } } if (!best) continue;
+    if (e.dead || e.gone) continue;
+    let best = null, bd = 1e9; for (const o of Y) { if (o.dead || o.gone) continue; const d = o.pos.distanceToSquared(e.pos); if (d < bd) { bd = d; best = o; } } if (!best) continue;
     e.aware = true; e.awareT = G.t; e.tg = best; (e.lastKnown || (e.lastKnown = new T.Vector3())).copy(best.pos); e.lastSeen = G.t - 1.5; e.reactT = rand(.1, .5);
     addGrudge(e, -best.sq, 90); e.face = Math.atan2(-(best.pos.x - e.pos.x), -(best.pos.z - e.pos.z));
   }
@@ -845,21 +876,21 @@ function spawnPost(room, foe) {
   SPAWN.posts.push(W);
   for (let i = 0; i < n; i++) {
     const s = (i - (n - 1) / 2) * 2.4, hp = new T.Vector3(x - nz * s, 0, z + nx * s); collideCircle(hp, .5, 0, 1.8);
-    const e = new Enemy('watch', hp.x, hp.z, { sq: W.sq, post, home: hp, homeN: new T.Vector3(nx, 0, nz), postObj: W }); e.face = Math.atan2(-nx, -nz); ENEMIES.push(e); out.push(e);
+    const e = new Enemy('watch', hp.x, hp.z, { sq: W.sq, post, home: hp, homeN: new T.Vector3(nx, 0, nz), postObj: W, defer: true }); e.face = Math.atan2(-nx, -nz); ENEMIES.push(e); out.push(e);
   }
   if (foe && room - n >= 2) {
     const sd = Math.random() < .5 ? 1 : -1, d = rand(17, 24), ax = post.x - nz * sd * d + nx * 3, az = post.z + nx * sd * d + nz * 3;
     if (foe === 'looter') { // they've come for the shop next door: walking into the porch's line is what starts it
       const hx = x - nz * sd * 7, hz = z + nx * sd * 7, k = Math.min(room - n, rint(2, 3)), sq = ++SPAWN.sq;
-      for (let i = 0; i < k; i++) { const p = _spP.set(ax + rand(-2, 2), 0, az + rand(-2, 2)); collideCircle(p, .5, 0, 1.8); ENEMIES.push(new Enemy('looter', p.x, p.z, { sq, home: new T.Vector3(hx - nz * i * 1.6, 0, hz + nx * i * 1.6), homeN: new T.Vector3(nx, 0, nz) })); }
-    } else { const A = spawnSquad(F2T(foe), foe, ax, az, Math.min(room - n, rint(2, 3)), {}); clashOn(A, out); clashOn(out, A); }
+      for (let i = 0; i < k; i++) { const p = _spP.set(ax + rand(-2, 2), 0, az + rand(-2, 2)); collideCircle(p, .5, 0, 1.8); ENEMIES.push(new Enemy('looter', p.x, p.z, { sq, home: new T.Vector3(hx - nz * i * 1.6, 0, hz + nx * i * 1.6), homeN: new T.Vector3(nx, 0, nz), defer: true })); }
+    } else SPAWN.pairs.push([spawnSquad(F2T(foe), foe, ax, az, Math.min(room - n, rint(2, 3)), {}), out]);
   }
   return true;
 }
 function spawnLooters(room) {
   const f = frontage(42, 80, true); if (!f) return false;
   const [x, z, nx, nz] = f, n = Math.min(room, rint(2, 4)), sq = ++SPAWN.sq;
-  for (let i = 0; i < n; i++) { const s = (i - (n - 1) / 2) * 1.8, hp = new T.Vector3(x - nz * s, 0, z + nx * s); collideCircle(hp, .5, 0, 1.8); ENEMIES.push(new Enemy('looter', hp.x, hp.z, { sq, home: hp, homeN: new T.Vector3(nx, 0, nz) })); }
+  for (let i = 0; i < n; i++) { const s = (i - (n - 1) / 2) * 1.8, hp = new T.Vector3(x - nz * s, 0, z + nx * s); collideCircle(hp, .5, 0, 1.8); ENEMIES.push(new Enemy('looter', hp.x, hp.z, { sq, home: hp, homeN: new T.Vector3(nx, 0, nz), defer: true })); }
   return true;
 }
 // the city keeps the people near you: whoever is well out of range (and not on your trail) goes home

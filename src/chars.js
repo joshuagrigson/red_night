@@ -246,6 +246,9 @@ function makeGLBRig(id) {
   play(R, 'idle', 0);
   return R;
 }
+// a rig leaving the scene for good: its skeletons' bone textures (one float texture each, made on the first draw) go with it.
+// Geometry, maps, guns and the faction pieces are shared, so they stay
+function rigDispose(R) { if (R && R.glb && R.root) R.root.traverse(o => { if (o.isSkinnedMesh && o.skeleton) o.skeleton.dispose(); }); }
 const GLB_MATS = {};
 // Glowing eyes for the scanned models: one small additive mesh (two soft dots) riding the head bone. The emissive is on the
 // eyes, not the body, so a supernatural tell still reads in a dark, realistic street and bloom carries it across a block.

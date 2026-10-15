@@ -493,8 +493,9 @@ function damageDir(src) { if (!src) return; const d = HUD.dirs[HUD.dirI] = { x: 
 function setPrompt(label, key) {
   const el = $('prompt');
   if (!label) { if (HUD.last.prompt) { el.style.opacity = 0; HUD.last.prompt = null; } if (HUD.act !== false) { HUD.act = false; $('bAct').classList.add('hide'); } return; }
-  if (HUD.last.prompt !== label) { HUD.last.prompt = label; el.innerHTML = (IS_TOUCH ? '' : `<kbd>${key}</kbd>`) + label; el.style.opacity = 1; $('bAct').textContent = label.toUpperCase(); }
-  if (HUD.act !== true) { HUD.act = true; $('bAct').classList.remove('hide'); }
+  // TOUCH.actT: when ACT last showed or changed its label; it takes no press that begins in the next .3 s (player.js)
+  if (HUD.last.prompt !== label) { HUD.last.prompt = label; el.innerHTML = (IS_TOUCH ? '' : `<kbd>${key}</kbd>`) + label; el.style.opacity = 1; $('bAct').textContent = label.toUpperCase(); TOUCH.actT = performance.now(); }
+  if (HUD.act !== true) { HUD.act = true; $('bAct').classList.remove('hide'); TOUCH.actT = performance.now(); }
 }
 function endExtras(prevBest) {
   const el = $('endStats'); if (!el) return; const nb = P.score > prevBest && P.score > 0;
