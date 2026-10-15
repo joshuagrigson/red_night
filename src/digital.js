@@ -37,9 +37,9 @@ function digFrag(f, fresh) {
     for (const o of DIG.frags) if (o !== f && o.side === side && o.y !== undefined && Math.abs(o.y - f.y) < 18 * DIG.k) { ok = false; break; }
     if (ok) break;
   }
-  f.vy = -rand(5, 13) * DIG.k; f.vx = side * rand(-1.5, 1.5) * DIG.k; f.life = 0; f.max = rand(5, 13); f.text = digText(); f.col = pick(DIG_COLS); f.sz = rand(9, 12.5); f.a = rand(.35, .8);
+  f.vy = -9 * DIG.k; /* one drift speed: lines that start apart stay apart */ f.vx = side * rand(-1.5, 1.5) * DIG.k; f.life = 0; f.max = rand(5, 13); f.text = digText(); f.col = pick(DIG_COLS); f.sz = rand(9, 12.5); f.a = rand(.35, .8);
   const edge = side < 0 ? 1 - f.x / (w * .22) : (f.x - w * .78) / (w * .22), px = f.sz * (1 + clamp(edge, 0, 1) * .25) * DIG.k;
-  f.font = `${px.toFixed(1)}px 'Share Tech Mono', monospace`; f.tw = f.text.length * px * .55; f.th = px; // cached: no font string or measure per frame
+  f.font = `${px.toFixed(1)}px 'Share Tech Mono', monospace`; f.tw = f.text.length * px * .6; f.th = px; // cached: no font string or measure per frame
   return f;
 }
 function digSize() {
@@ -62,10 +62,10 @@ function digInit() {
   window.addEventListener('resize', digSize); AUG_HOOKS.push(digAug); digAug(G.aug);
   window.addEventListener('keydown', e => { if (e.code === 'KeyN' && !e.repeat && /^(title|apt|city|photo)$/.test(G.state) && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) digToggle(); });
 }
-const DIG_KEEP = '#touch .tb, #hTL, #hTR, #hBL, #hBR';
+const DIG_KEEP = '#touch .tb, #hTL, #hTR, #hBL, #hBR, #bcast';
 function digKeep() { // canvas-space rects the layer stays off: the touch buttons and the HUD corners
-  DIG.keep.length = 0; const k = DIG.k, p = 6 * k;
-  for (const el of document.querySelectorAll(DIG_KEEP)) { const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) continue; DIG.keep.push(r.left * k - p, r.top * k - p, r.right * k + p, r.bottom * k + p); }
+  DIG.keep.length = 0; const k = DIG.k, p = 8 * k;
+  for (const el of document.querySelectorAll(DIG_KEEP)) { if (el.style.opacity === '0') continue; const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) continue; DIG.keep.push(r.left * k - p, r.top * k - p, r.right * k + p, r.bottom * k + p); }
 }
 function digHit(x0, y0, x1, y1) { const K = DIG.keep; for (let i = 0; i < K.length; i += 4) if (x1 > K[i] && x0 < K[i + 2] && y1 > K[i + 1] && y0 < K[i + 3]) return true; return false; }
 const _dv = new T.Vector3();
@@ -73,7 +73,7 @@ function digProject(x, y, z) {
   _dv.set(x, y, z).project(camera); if (_dv.z > 1 || _dv.z < -1 || Math.abs(_dv.x) > 1.05 || Math.abs(_dv.y) > 1.05) return null;
   return [(_dv.x * .5 + .5) * DIG.w, (-_dv.y * .5 + .5) * DIG.h];
 }
-const _dgTop = new T.Vector3();
+const _dgTop = new T.Vector3(), _dgBox = new Float32Array(30 * 4);
 function digTags() { // refreshed at 4 Hz: landmarks, doors and (on a strong dial) threats you can actually see
   DIG.tags.length = 0; if (G.state !== 'city' || G.inside) return; const cp = camera.position;
   for (const m of DIG_MARKS) { const d = Math.hypot(m.p[0] - cp.x, m.p[2] - cp.z); if (d > 40 && d < 420) DIG.tags.push({ kind: 'mark', n: m.n, p: m.p, d }); }
@@ -104,11 +104,14 @@ function updateDigital(dt, st) {
   for (const m of DIG.motes) { m.y -= m.v * ft; if (m.y < -.02) { m.y = 1.02; m.x = Math.random(); } x.globalAlpha = m.a * a; x.fillRect(m.x * W, m.y * H, m.s * k, m.s * k); }
   x.globalAlpha = 1;
   // code fragments on angled edge panels ("tipped" toward the viewer)
-  const n = Math.round(3 + 27 * Math.pow(a, 1.6)); x.textBaseline = 'middle';
+  const n = Math.min(Math.round(3 + 27 * Math.pow(a, 1.6)), 2 * Math.floor(H * .4 / (18 * k))); x.textBaseline = 'middle'; // only as many as the band has lines for
+  let nb = 0; const B = _dgBox;
   for (let i = 0; i < n; i++) {
     const f = DIG.frags[i]; f.life += ft; f.y += f.vy * ft; f.x += f.vx * ft; if (f.life > f.max || f.y < H * .24) digFrag(f, false);
     const fa = Math.min(1, f.life / .8, (f.max - f.life) / 1.2) * f.a * (.28 + a * .72); if (fa <= .01) continue;
     const l = f.side < 0 ? f.x : f.x - f.tw; if (digHit(l, f.y - f.th, l + f.tw, f.y + f.th)) continue; // never print through a button or the ammo
+    let hit = false; for (let q = 0; q < nb; q += 4) if (l + f.tw > B[q] && l < B[q + 2] && f.y + f.th * .6 > B[q + 1] && f.y - f.th * .6 < B[q + 3]) { hit = true; break; }
+    if (hit) continue; B[nb++] = l; B[nb++] = f.y - f.th * .6; B[nb++] = l + f.tw; B[nb++] = f.y + f.th * .6;
     x.setTransform(1, f.side * .042, 0, 1, f.x, f.y); x.font = f.font;
     x.textAlign = f.side < 0 ? 'left' : 'right'; x.fillStyle = f.col; x.globalAlpha = fa; x.fillText(f.text, 0, 0);
   }
