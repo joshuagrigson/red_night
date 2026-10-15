@@ -11,7 +11,7 @@ const GRID = { d: -1, k: 1, tgt: 1, flick: 0, lastK: 1 };
 function gridApply(d, k) {
   const st = STYLES[d === 0 ? 'stone' : 'wood']; if (st) st.mat.emissiveIntensity = 1.25 * (.07 + .93 * k);   // a few candles and generators stay on
   const h = GRIDM.head[d]; if (h) { if (!h.userData.c0) h.userData.c0 = h.color.clone(); h.color.copy(h.userData.c0).multiplyScalar(.03 + .97 * k); }
-  const c = GRIDM.cone[d]; if (c) c.opacity = .018 * k;
+  const c = GRIDM.cone[d]; if (c) c.opacity = .011 * k;
   for (const l of LS) if (l.grid === d) { if (l.i0 === undefined) l.i0 = l.i; l.i = l.i0 * k; }
   const g = G.sglowGeo; if (g) { const col = g.attributes.color.array, pos = g.attributes.position.array, c0 = G.sglowCol0;
     for (let i = 0; i < pos.length; i += 3) if (pos[i + 1] < 14 && pos[i] < 1000 && districtAt(pos[i], pos[i + 2]) === d) { col[i] = c0[i] * k; col[i + 1] = c0[i + 1] * k; col[i + 2] = c0[i + 2] * k; }

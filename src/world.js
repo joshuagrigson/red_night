@@ -359,7 +359,7 @@ function wreck(x, z, h) {
 // street lighting by district: own lamp-head and beam materials + tagged point lights, so GRID can black a district out
 const GRIDM = { head: {}, cone: {} };
 const gridHead = (d, col) => GRIDM.head[d] || (GRIDM.head[d] = new T.MeshBasicMaterial({ color: lc(col), toneMapped: false }));
-const gridCone = (d, col) => GRIDM.cone[d] || (GRIDM.cone[d] = new T.MeshBasicMaterial({ color: lc(col), transparent: true, opacity: .018, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false, side: T.DoubleSide }));
+const gridCone = (d, col) => GRIDM.cone[d] || (GRIDM.cone[d] = new T.MeshBasicMaterial({ color: lc(col), transparent: true, opacity: .011, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false, side: T.DoubleSide }));
 const gridLS = d => { LS[LS.length - 1].grid = d; };
 function lamp(x, z, col) {
   const d = districtAt(x, z);
