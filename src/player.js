@@ -124,12 +124,13 @@ function setupTouch() {
     const el = $(id); if (!el) return;
     el.addEventListener('touchstart', e => {
       e.preventDefault(); e.stopPropagation(); touchSync(e); const ts = touchTs(e);
-      for (const t of e.changedTouches) { const b = { el, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts, v: -1, live: false, up, slop: look || 0, owe: 0, t0: performance.now() }; TOUCH.bt.set(t.identifier, b); if (down) down(t.identifier, b); }
+      for (const t of e.changedTouches) { const b = { el, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts, ts0: ts, te: ts, v: -1, live: false, up, slop: look || 0, owe: 0, t0: performance.now() }; TOUCH.bt.set(t.identifier, b); if (down) down(t.identifier, b); }
       if (id !== 'bAds') el.classList.add('on');
     }, { passive: false });
     // every action button steers the view once the thumb slides (press RELOAD and keep aiming, as in mobile CoD)
     el.addEventListener('touchmove', e => { e.preventDefault(); e.stopPropagation(); const ts = touchTs(e); for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b && b.slop) btnLook(b, t, ts); } }, { passive: false });
-    const end = e => { e.preventDefault(); e.stopPropagation(); const lost = e.type === 'touchcancel'; for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b) btnUp(t.identifier, b, lost); } touchSync(e); };
+    // ts0 / te: the press and the release on the event clock, so a hitch between the two handlers can't turn a tap into a hold
+    const end = e => { e.preventDefault(); e.stopPropagation(); const lost = e.type === 'touchcancel', te = touchTs(e); for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b) { b.te = te; btnUp(t.identifier, b, lost); } } touchSync(e); };
     el.addEventListener('touchend', end, { passive: false }); el.addEventListener('touchcancel', end, { passive: false });
   };
   const fireDown = id => { TOUCH.fireIds.add(id); INP.fire = true; AU.init(); }, fireUp = id => { TOUCH.fireIds.delete(id); INP.fire = TOUCH.fireIds.size > 0; };
@@ -144,7 +145,7 @@ function setupTouch() {
   // (setPrompt), so a double tap on EXIT CAR doesn't get straight back in
   btn('bAct', null, (id, b, lost) => { if (!lost && !b.live && b.t0 - TOUCH.actT >= 300) press('act'); }, TAP_SLOP);
   // the weapon panel (top right) is the swap: tap for the other gun, hold for the blade
-  btn('hBR', null, (id, b, lost) => { if (!lost && !b.live) press(performance.now() - b.t0 > 450 ? 's3' : 'swap'); }, TAP_SLOP);
+  btn('hBR', null, (id, b, lost) => { if (!lost && !b.live) press(b.te - b.ts0 > 450 ? 's3' : 'swap'); }, TAP_SLOP);
   $('hBR').setAttribute('role', 'button'); $('hBR').setAttribute('aria-label', 'Swap weapon (hold for the blade)');
   const surface = document.body;
   // in play the touches this claims are consumed: Chromium (Android) otherwise holds back every move inside its 15 px slop,
