@@ -43,7 +43,7 @@ button:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
 #mini{width:132px;height:132px;border-radius:50%;box-shadow:0 2px 10px rgba(0,0,0,.45),0 0 calc(18px*var(--aug)) rgba(5,217,232,calc(.32*var(--aug)))}
 #dist{display:flex;flex-direction:column;gap:4px;padding-top:2px;max-width:min(320px,30vw)}
 #distName{font-weight:700;font-size:20px;line-height:1.05;letter-spacing:.1em;color:var(--ink);padding-left:8px;border-left:3px solid var(--volt)}
-#objective{font-size:12px;line-height:1.3;letter-spacing:.05em;color:var(--dim);padding-left:11px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#objective{font-size:12px;line-height:1.3;letter-spacing:.05em;color:var(--dim);padding-left:11px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:2.6em}  /* two lines reserved: a wrap no longer bumps the HP bar */
 #objective.new{animation:objNew 2.6s ease-out}
 @keyframes objNew{0%,40%{color:var(--volt)}}
 #hpWrap{margin-top:9px;width:170px}
@@ -141,12 +141,12 @@ body.touch #wName{font-size:10px}
 body.touch #mini{width:84px;height:84px}
 body.touch #slots{display:none}
 body.touch #prompt{display:none}  /* the ACT button carries the label on touch */
-body.touch #banner{top:46%;left:50%;right:auto;width:40vw;padding:0;transform:translateX(-50%)}  /* below the broadcast, between the thumb clusters */
+body.touch #banner{top:calc(50% + 30px);left:50%;right:auto;width:40vw;padding:0;transform:translateX(-50%)}  /* under the crosshair, above ACT, between the thumb clusters */
 body.touch #banner h2{font-size:clamp(20px,4vw,30px)}
 body:not(.touch) #touch{display:none}
 /* story.js broadcast: below the menus, out of the way of the HUD corners, hidden in menus and photo mode */
-#bcast{z-index:8!important;top:calc(var(--st) + 92px)!important}
-body.touch #bcast{top:calc(var(--st) + 108px)!important;box-sizing:border-box;max-width:min(380px,38vw)!important;font-size:12px!important;padding:6px 11px 7px!important}
+#bcast{z-index:8!important;top:calc(var(--st) + 92px)!important;box-sizing:border-box;width:min(560px,86vw);min-height:4.4em}  /* a fixed frame: the text types into it instead of the box growing and re-centring */
+body.touch #bcast{top:calc(var(--st) + 108px)!important;width:min(380px,38vw);max-width:min(380px,38vw)!important;font-size:12px!important;padding:6px 11px 7px!important}
 body.inMenu #bcast,body.photo #bcast{visibility:hidden}
 body.photo #hud,body.photo #touch,body.photo #scope,body.photo #rotate{display:none!important}
 
@@ -180,6 +180,7 @@ body.touch .swatch{width:44px;height:44px}
 #mChar .stage .holder,.pvHolder{position:absolute;inset:0}
 #pv{width:100%;height:100%;display:block}
 #mChar .side{flex:1 1 340px;max-width:520px;padding:20px;display:flex;flex-direction:column;gap:14px}
+#mChar .side>.eyebrow{order:-3}#mChar .side>.eyebrow+.opt{order:-2}#mChar #fitRow{order:-1}  /* body, then outfit (each one is its own model): the big choices above the fold */
 #mChar .side>.row:last-child{position:sticky;bottom:0;margin:0 -20px -20px;padding:12px 20px 20px;background:#0f0e12;border-top:1px solid var(--edge)}
 .swatch{width:30px;height:30px;border-radius:50%;border:2px solid transparent;padding:0;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
 .swatch.sel{border-color:var(--volt);box-shadow:0 0 0 2px #0e0d12,0 0 0 4px var(--volt)}
@@ -319,7 +320,16 @@ body.phHidden #photoBar{opacity:0;pointer-events:none}
   .ldMark{font-size:clamp(40px,15vh,80px)}
 }
 body.touch #feed{position:fixed;left:calc(14px + var(--sl));top:calc(104px + var(--st));align-items:flex-start;margin:0;gap:2px}
-body.touch #feed div{border-right:0;border-left:2px solid var(--blood);max-width:min(170px,24vw)}
+body.touch #feed div{border-right:0;border-left:2px solid var(--blood);max-width:min(220px,27vw);white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.25}  /* two lines: the district or kill tag is the part that matters */
+body.touch #clockSub,body.touch #heat em{font-size:10px}body.touch #objective,body.touch #kills,body.touch #wName,body.touch #status,body.touch #feed div{font-size:11px}
+#clockSub{background:rgba(8,8,10,.45);padding:1px 6px}  /* a backing so the red caption survives lit windows */
+#heat.cold em{opacity:0}
+@media (max-height:520px){
+  #mChar .side{padding:12px;gap:8px}#mChar .side>.row:last-child{margin:0 -12px -12px;padding:10px 12px 12px}body.touch #mChar .swatch{width:36px;height:36px}#mChar .side>.eyebrow{display:none}
+  #smHead{position:relative;padding-right:84px;flex-wrap:nowrap}#smClose{position:absolute;right:0;top:50%;transform:translateY(-50%)}#smClassTabs{flex-wrap:nowrap;overflow-x:auto;min-width:0;scrollbar-width:none}#smClassTabs::-webkit-scrollbar{display:none}#smClassTabs .chip{flex:none}
+  #smSide>.tabs{order:-3}#smTabAtt,#smTabCus{order:-2}#smSide .specs{display:none}
+  #smFoot{flex-wrap:nowrap}#smFoot .btn{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:8px 8px}
+}
 body.touch #feed div:nth-child(n+4){display:none}
 @media (prefers-reduced-motion:reduce){#feed div,#banner.go h2,#heat.rise,#heat.rise i b,#objective.new,#ldFill:after,#phFlash.go{animation:none}#fade,#loading{transition:none}#loading:before{animation:none}}
 </style>
@@ -381,7 +391,7 @@ body.touch #feed div:nth-child(n+4){display:none}
     <div class="opt"><b>Skin</b><span id="skinSw" style="display:flex;gap:6px;flex-wrap:wrap"></span></div>
     <div class="opt"><b>Hair</b><span id="hairOpts" style="display:flex;gap:6px;flex-wrap:wrap"></span></div>
     <div class="opt"><b>Hair color</b><span id="hairSw" style="display:flex;gap:6px;flex-wrap:wrap"></span></div>
-    <div class="opt"><b>Outfit</b><span id="fitOpts" style="display:flex;gap:6px;flex-wrap:wrap"></span></div>
+    <div class="opt" id="fitRow"><b>Outfit</b><span id="fitOpts" style="display:flex;gap:6px;flex-wrap:wrap"></span></div>
     <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px"><button class="btn" id="charBack">Back</button><button class="btn primary" id="goNight">Begin the night</button></div>
   </div>
 </div>

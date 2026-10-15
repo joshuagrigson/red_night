@@ -529,7 +529,7 @@ AMB.dangerTick = function (dt, st) {
   let tgt = .06;
   if (st === 'city' && G.started !== undefined) {
     let a = 0, s = 0, n = 0;
-    for (const e of ENEMIES) { if (e.dead) continue; const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, d2 = dx * dx + dz * dz; if (d2 > 6400) continue; if (e.aware) a++; if (e.seesP) s++; if (d2 < 900 && e.mode !== 'disguise') n++; }
+    for (const e of ENEMIES) { if (e.dead || e.waitT >= 0) continue; const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, d2 = dx * dx + dz * dz; if (d2 > 6400) continue; if (e.aware) a++; if (e.seesP) s++; if (d2 < 900 && e.mode !== 'disguise') n++; }
     const h = clamp((G.hour || 0) / 12, 0, 1), heat = typeof HEAT !== 'undefined' ? clamp((HEAT.level || 0) / 5, 0, 1) : 0, hp = P.maxHp ? clamp(1 - P.hp / P.maxHp, 0, 1) : 0;
     const hot = a > 0 && (G.t - (P.lastFire || -99) < 3 || P.regenT > 0);   // regenT > 0: hit in the last few seconds
     tgt = P.dead ? .1 : clamp(.07 + .12 * h + .1 * heat + Math.min(1, a * .2 + n * .1) * .38 + (s > 0 ? .28 : 0) + (hot ? .22 : 0) + hp * .14, 0, 1);

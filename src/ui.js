@@ -49,13 +49,17 @@ function pulse(el, cls) { if (typeof el === 'string') el = $(el); if (!el) retur
 /* ---------- preview renderer (character + gunsmith) ---------- */
 const PV = { r: null, scene: new T.Scene(), cam: new T.PerspectiveCamera(32, 1, .01, 50), obj: null, rotY: .6, drag: null, mode: null, rig: null };
 (() => {
-  PV.scene.add(new T.HemisphereLight(0xb0a0ff, 0x200818, .9));
-  const k = new T.DirectionalLight(0xffffff, 1.2); k.position.set(2, 3, 2); PV.scene.add(k);
-  const m = new T.DirectionalLight(0xff2a6d, 1.4); m.position.set(-3, 1, -1); PV.scene.add(m);
-  const c = new T.DirectionalLight(0x05d9e8, 1.1); c.position.set(3, -1, -2); PV.scene.add(c);
+  // lit like the street (sodium rim, cool sky fill); the Augment dial pulls the rims toward the net's magenta and cyan, as RIM_AUG does in game
+  const h = new T.HemisphereLight(0xc4c0bc, 0x1a1410, .9); PV.scene.add(h);
+  const k = new T.DirectionalLight(0xfff1de, 1.2); k.position.set(2, 3, 2); PV.scene.add(k);
+  const m = new T.DirectionalLight(0xffa860, 1.3); m.position.set(-3, 1, -1); PV.scene.add(m);
+  const c = new T.DirectionalLight(0x8fb4d8, 1); c.position.set(3, -1, -2); PV.scene.add(c);
   PV.scene.environment = scene.environment;
-  const fl = new T.Mesh(new T.CircleGeometry(1.2, 40), new T.MeshBasicMaterial({ map: glowTex, color: 0xff2a6d, transparent: true, opacity: .35, blending: T.AdditiveBlending, depthWrite: false }));
+  const fl = new T.Mesh(new T.CircleGeometry(1.2, 40), new T.MeshBasicMaterial({ map: glowTex, color: 0xffa860, transparent: true, opacity: .22, blending: T.AdditiveBlending, depthWrite: false }));
   fl.rotation.x = -Math.PI / 2; fl.userData.floor = 1; PV.floor = fl;
+  const W0 = [new T.Color(0xffa860), new T.Color(0x8fb4d8), new T.Color(0xc4c0bc)], N1 = [new T.Color(0xff2a6d), new T.Color(0x05d9e8), new T.Color(0xb0a0ff)];
+  const pvAug = a => { const t = smooth01((a - .05) / .7); m.color.copy(W0[0]).lerp(N1[0], t); c.color.copy(W0[1]).lerp(N1[1], t); h.color.copy(W0[2]).lerp(N1[2], t); fl.material.color.copy(m.color); fl.material.opacity = .22 + .13 * t; G.stillN = 0; };
+  AUG_HOOKS.push(pvAug); pvAug(G.aug);
 })();
 function pvMount(holderId) {
   if (!PV.r) {
@@ -297,13 +301,22 @@ function toast(msg) { feed(msg); }
 /* ---------- pause ---------- */
 function pause() {
   if (G.state !== 'city' && G.state !== 'apt') return;
+  if (P.dead || (G.state === 'city' && G.hour >= 12)) return; // the death and sunrise countdowns end in the end screen; a menu opened over them soft-locked the game
   G.pausedFrom = G.state; G.state = 'paused'; releaseMouse(); show('mPause', true); show('touch', false); show('hud', false); document.body.classList.add('inMenu');
   AU.engineSet(false); mouseDown = false; rmb = false; INP.fire = false;
 }
 function resume() { if (SET.from) { show('mSet', false); SET.from = null; } show('mPause', false); show('mLoad', false); G.state = G.pausedFrom || 'city'; document.body.classList.remove('inMenu'); if (IS_TOUCH) show('touch', true); show('hud', true); }
-function quitToTitle() {
-  for (const id of ['mPause', 'mLoad', 'mSmith', 'mEnd', 'mSet', 'hud', 'touch', 'photoBar', 'photoPad', 'phOut']) show(id, false);
+/* every overlay a night can leave open: photo mode, pause, loadout, gunsmith, settings */
+function uiReset() {
+  if (G.state === 'photo' && PH.hurt) { G.dmgFlash = PH.hurt[0]; P.suppressed = PH.hurt[1]; }
+  PH.hurt = null; PH.ptrs.clear(); if (PH.out) closeShot();
+  for (const id of ['mPause', 'mLoad', 'mSmith', 'mSet', 'photoBar', 'photoPad', 'phHint', 'phOut']) show(id, false);
   SET.from = null; document.body.classList.remove('inMenu', 'photo', 'phHidden');
+  G.wakeT = 0; canvas.style.filter = 'none';
+}
+function quitToTitle() {
+  for (const id of ['mEnd', 'hud', 'touch']) show(id, false);
+  uiReset();
   // a broadcast cut off mid-line would otherwise hang over the title screen
   if (typeof STORY !== 'undefined') { STORY.queue.length = 0; STORY.cur = null; const bc = $('bcast'); if (bc) bc.style.opacity = 0; }
   clearNight(); G.state = 'title'; show('mTitle', true); AU.engineSet(false);
@@ -522,12 +535,14 @@ function enterPhoto() {
   const c = camera.position;
   if (Math.abs(c.x) <= HALF && Math.abs(c.z) <= HALF) { PH.lo.set(-HALF, .3, -HALF); PH.hi.set(HALF, 160, HALF); }
   else { PH.lo.set(c.x - 14, .3, c.z - 14); PH.hi.set(c.x + 14, Math.max(4, c.y + 2), c.z + 14); } // apartment and interiors live outside the grid
+  G.wakeT = 0; canvas.style.filter = 'none'; // the wake-up blur would otherwise sit over every shot taken in the first seconds
   G.state = 'photo'; PH.ui = true; PH.out = false; PH.ptrs.clear(); PH.mv.set(0, 0, 0); PRESS.clear();
   PH.hurt = [G.dmgFlash || 0, P.suppressed || 0]; G.dmgFlash = 0; P.suppressed = 0; // the post pass reads these: keep the red hurt fringe out of photos
   setOp('dmg', 0); setOp('poss', 0); setOp('hex', 0); // and the hurt vignettes out of the live view (hudUpdate restores them)
   document.body.classList.add('photo'); document.body.classList.remove('phHidden');
   show('mPause', false); show('phOut', false); show('photoPad', true); show('photoBar', true); phHint(PH.help, 5);
   SET.sl.forEach(s => s._draw());
+  updateBody(0); // first-person hides the body; a free camera should find you standing there
 }
 function phHint(t, dur) { const h = $('phHint'); h.textContent = t; h.classList.remove('fade', 'hide'); PH.hintT = dur; }
 function exitPhoto() {
@@ -537,6 +552,7 @@ function exitPhoto() {
   closeShot(); for (const id of ['photoPad', 'photoBar', 'phHint']) show(id, false);
   document.body.classList.remove('photo', 'phHidden'); PH.ptrs.clear(); PRESS.clear();
   G.state = 'paused'; show('mPause', true);
+  if (PBODY) PBODY.root.visible = G.camMode === 'tpp' && !P.inCar;
 }
 function phToggleUI() {
   if (G.state !== 'photo') return; PH.ui = !PH.ui; document.body.classList.toggle('phHidden', !PH.ui);

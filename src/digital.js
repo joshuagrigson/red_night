@@ -4,7 +4,7 @@
    screen edges, a holographic scan sweep, data motes, AR tags on landmarks/doors/threats.
    Everything here scales with G.aug; at 0 the city is bare. N tips the layer in and out.
    ===================================================================== */
-const DIG = { c: null, x: null, w: 1, h: 1, k: 1, frags: [], motes: [], acc: 0, t: 0, sweepT: 4, sweepY: -1, tagT: 0, tags: [], on: false, tipK: 1, tipAnim: null, mem: .6, last: -1 };
+const DIG = { c: null, x: null, w: 1, h: 1, k: 1, frags: [], motes: [], keep: [], keepT: 0, acc: 0, t: 0, sweepT: 4, sweepY: -1, tagT: 0, tags: [], on: false, tipK: 1, tipAnim: null, mem: .6, last: -1 };
 const DIG_COLS = ['#05d9e8', '#05d9e8', '#e8f6ff', '#ff2a6d', '#05d9e8', '#f3e600'];
 const DIG_MARKS = [
   { n: 'CITADEL', p: [-140, 12, -140] }, { n: 'CAPITOL', p: [100, 16, -140] }, { n: 'GOLD BRIDGE', p: [200, 20, -120] },
@@ -17,7 +17,7 @@ function digText() {
   if (G.state === 'city' && r < .5) {
     const k = Math.floor(Math.random() * 7);
     if (k === 0) return `${D.id.toUpperCase()}-NODE ${hexs(4)} ▸ ${rint(9, 140)}ms`;
-    if (k === 1) return `POS ${P.pos.x.toFixed(1)} ${P.pos.z.toFixed(1)} · HDG ${String(Math.round(((-P.yaw * 57.3) % 360 + 360) % 360)).padStart(3, '0')}`;
+    if (k === 1) return `${D.name} · BLK ${Math.floor((P.pos.x + HALF) / 40) + 1}${'ABCDEFGHJKLMNPQR'[clamp(Math.floor((P.pos.z + HALF) / 40), 0, 15)]} · HDG ${String(Math.round(((-P.yaw * 57.3) % 360 + 360) % 360)).padStart(3, '0')}`; // a block reference, not raw engine coordinates
     if (k === 2) { let n = 0, best = null, bd = 1e9; for (const e of ENEMIES) { if (e.dead) continue; n++; const dd = e.pos.distanceTo(P.pos); if (dd < bd) { bd = dd; best = e; } } return best ? `HOSTILES ${n} · ${(ET[best.type] ? ET[best.type].name : best.type).toUpperCase()} ${Math.round(bd)}m` : 'HOSTILES 0 · SECTOR QUIET'; }
     if (k === 3) return `RAIN ${Math.round(G.rainK * 100)}% · VIS ${Math.round(1 / Math.max(.001, scene.fog.density))}m`;
     if (k === 4) return `${fmtClock(Math.min(12, G.hour || 0))} · DAWN -${Math.max(0, 12 - (G.hour || 0)).toFixed(1)}h`;
@@ -30,12 +30,15 @@ function digText() {
 }
 function digFrag(f, fresh) {
   const side = Math.random() < .5 ? -1 : 1, w = DIG.w, h = DIG.h;
-  f.side = side; f.x = side < 0 ? rand(.015, .2) * w : rand(.8, .985) * w; f.y = fresh ? rand(.08, .95) * h : rand(.55, .98) * h;
+  // a mid-height band: the HUD corners and the thumb clusters own the top and bottom of the screen
+  f.side = side; f.x = side < 0 ? rand(.015, .2) * w : rand(.8, .985) * w; f.y = (fresh ? rand(.3, .62) : rand(.5, .64)) * h;
   f.vy = -rand(5, 13) * DIG.k; f.vx = side * rand(-1.5, 1.5) * DIG.k; f.life = 0; f.max = rand(5, 13); f.text = digText(); f.col = pick(DIG_COLS); f.sz = rand(9, 12.5); f.a = rand(.35, .8);
+  const edge = side < 0 ? 1 - f.x / (w * .22) : (f.x - w * .78) / (w * .22), px = f.sz * (1 + clamp(edge, 0, 1) * .25) * DIG.k;
+  f.font = `${px.toFixed(1)}px 'Share Tech Mono', monospace`; f.tw = f.text.length * px * .55; f.th = px; // cached: no font string or measure per frame
   return f;
 }
 function digSize() {
-  if (!DIG.c) return; const k = Math.min(window.devicePixelRatio || 1, 1.25);
+  if (!DIG.c) return; const k = Math.min(window.devicePixelRatio || 1, IS_TOUCH ? 1 : 1.25); DIG.keepT = 0; // thin mono text reads fine at 1x on a phone and costs a third of the fill
   DIG.k = k; DIG.w = Math.max(1, Math.round(innerWidth * k)); DIG.h = Math.max(1, Math.round(innerHeight * k)); DIG.c.width = DIG.w; DIG.c.height = DIG.h;
 }
 function digAug(a) {
@@ -54,18 +57,26 @@ function digInit() {
   window.addEventListener('resize', digSize); AUG_HOOKS.push(digAug); digAug(G.aug);
   window.addEventListener('keydown', e => { if (e.code === 'KeyN' && !e.repeat && /^(title|apt|city|photo)$/.test(G.state) && !(document.activeElement && /INPUT|TEXTAREA/.test(document.activeElement.tagName))) digToggle(); });
 }
+const DIG_KEEP = '#touch .tb, #hTL, #hTR, #hBL, #hBR';
+function digKeep() { // canvas-space rects the layer stays off: the touch buttons and the HUD corners
+  DIG.keep.length = 0; const k = DIG.k, p = 6 * k;
+  for (const el of document.querySelectorAll(DIG_KEEP)) { const r = el.getBoundingClientRect(); if (r.width < 1 || r.height < 1) continue; DIG.keep.push(r.left * k - p, r.top * k - p, r.right * k + p, r.bottom * k + p); }
+}
+function digHit(x0, y0, x1, y1) { const K = DIG.keep; for (let i = 0; i < K.length; i += 4) if (x1 > K[i] && x0 < K[i + 2] && y1 > K[i + 1] && y0 < K[i + 3]) return true; return false; }
 const _dv = new T.Vector3();
 function digProject(x, y, z) {
   _dv.set(x, y, z).project(camera); if (_dv.z > 1 || _dv.z < -1 || Math.abs(_dv.x) > 1.05 || Math.abs(_dv.y) > 1.05) return null;
   return [(_dv.x * .5 + .5) * DIG.w, (-_dv.y * .5 + .5) * DIG.h];
 }
+const _dgTop = new T.Vector3();
 function digTags() { // refreshed at 4 Hz: landmarks, doors and (on a strong dial) threats you can actually see
   DIG.tags.length = 0; if (G.state !== 'city' || G.inside) return; const cp = camera.position;
   for (const m of DIG_MARKS) { const d = Math.hypot(m.p[0] - cp.x, m.p[2] - cp.z); if (d > 40 && d < 420) DIG.tags.push({ kind: 'mark', n: m.n, p: m.p, d }); }
   for (const it of INTER) if (!it.apt && !it.car && it.p && it.label && /^Enter|^Take/.test(it.label)) { const d = it.p.distanceTo(cp); if (d < 60 && d > 4) DIG.tags.push({ kind: 'door', n: it.label.replace(/^Enter |^Take the /, '').toUpperCase(), p: [it.p.x, it.p.y + 2.6, it.p.z], d }); }
   if (G.aug > .55) for (const e of ENEMIES) {
-    if (e.dead || !e.pos) continue; const d = e.pos.distanceTo(cp); if (d > 45 || d < 3) continue;
-    const top = e.pos.clone().setY((e.pos.y || 0) + 2.1); if (!losClear(cp, top)) continue;
+    if (e.dead || !e.pos || e.mode === 'disguise' || e.waitT >= 0 || (e.R && !e.R.root.visible)) continue; // a disguise stays a disguise; nothing tags what you can't see
+    const d = e.pos.distanceTo(cp); if (d > 45 || d < 3) continue;
+    const top = _dgTop.copy(e.pos).setY((e.pos.y || 0) + 2.1); if (!losClear(cp, top)) continue;
     DIG.tags.push({ kind: 'threat', n: (ET[e.type] ? ET[e.type].name : e.type).toUpperCase(), p: [top.x, top.y, top.z], d, e });
   }
 }
@@ -78,19 +89,22 @@ function updateDigital(dt, st) {
     if (A.t >= 1) { DIG.tipAnim = null; DIG.c.style.transform = ''; store('aug', G.aug); }
   }
   if (!DIG.on) { if (DIG.last !== 0) { DIG.x.clearRect(0, 0, DIG.w, DIG.h); DIG.last = 0; } return; }
-  DIG.acc += dt; DIG.t += dt; if (DIG.acc < 1 / 30) return; const ft = DIG.acc; DIG.acc = 0; DIG.last = 1;
+  DIG.acc += dt; DIG.t += dt; if (DIG.acc < (IS_TOUCH || G.quality === 'low' ? 1 / 20 : 1 / 30)) return; const ft = DIG.acc; DIG.acc = 0; DIG.last = 1;
+  if ((DIG.keepT -= ft) <= 0) { DIG.keepT = 2; digKeep(); }
   const x = DIG.x, W = DIG.w, H = DIG.h, a = G.aug, k = DIG.k, live = st === 'city' || st === 'apt' || st === 'title' || st === 'char' || st === 'photo';
   x.setTransform(1, 0, 0, 1, 0, 0); x.clearRect(0, 0, W, H); if (!live) return;
   x.globalCompositeOperation = 'lighter';
   // data motes
-  for (const m of DIG.motes) { m.y -= m.v * ft; if (m.y < -.02) { m.y = 1.02; m.x = Math.random(); } x.fillStyle = `rgba(5,217,232,${(m.a * a).toFixed(3)})`; x.fillRect(m.x * W, m.y * H, m.s * k, m.s * k); }
+  x.fillStyle = '#05d9e8';
+  for (const m of DIG.motes) { m.y -= m.v * ft; if (m.y < -.02) { m.y = 1.02; m.x = Math.random(); } x.globalAlpha = m.a * a; x.fillRect(m.x * W, m.y * H, m.s * k, m.s * k); }
+  x.globalAlpha = 1;
   // code fragments on angled edge panels ("tipped" toward the viewer)
   const n = Math.round(3 + 27 * Math.pow(a, 1.6)); x.textBaseline = 'middle';
   for (let i = 0; i < n; i++) {
-    const f = DIG.frags[i]; f.life += ft; f.y += f.vy * ft; f.x += f.vx * ft; if (f.life > f.max || f.y < H * .04) digFrag(f, false);
+    const f = DIG.frags[i]; f.life += ft; f.y += f.vy * ft; f.x += f.vx * ft; if (f.life > f.max || f.y < H * .24) digFrag(f, false);
     const fa = Math.min(1, f.life / .8, (f.max - f.life) / 1.2) * f.a * (.28 + a * .72); if (fa <= .01) continue;
-    const edge = f.side < 0 ? 1 - f.x / (W * .22) : (f.x - W * .78) / (W * .22), sk = f.side * .07;
-    x.setTransform(1, sk * .6, 0, 1, f.x, f.y); x.font = `${(f.sz * (1 + clamp(edge, 0, 1) * .25) * k).toFixed(1)}px 'Share Tech Mono', monospace`;
+    const l = f.side < 0 ? f.x : f.x - f.tw; if (digHit(l, f.y - f.th, l + f.tw, f.y + f.th)) continue; // never print through a button or the ammo
+    x.setTransform(1, f.side * .042, 0, 1, f.x, f.y); x.font = f.font;
     x.textAlign = f.side < 0 ? 'left' : 'right'; x.fillStyle = f.col; x.globalAlpha = fa; x.fillText(f.text, 0, 0);
   }
   x.setTransform(1, 0, 0, 1, 0, 0); x.globalAlpha = 1;
@@ -116,7 +130,8 @@ function updateDigital(dt, st) {
       const p = t.e ? (t.e.dead ? null : digProject(t.e.pos.x, (t.e.pos.y || 0) + 2.1, t.e.pos.z)) : digProject(t.p[0], t.p[1], t.p[2]); if (!p) continue;
       const near = t.kind === 'threat', col = near ? '255,42,109' : t.kind === 'door' ? '243,230,0' : '5,217,232';
       const al = (near ? .9 : .65) * smooth01((a - .08) / .4) * (t.kind === 'mark' ? clamp((t.d - 40) / 60, 0, 1) : 1); if (al < .02) continue;
-      x.strokeStyle = x.fillStyle = `rgba(${col},${al.toFixed(3)})`; const r = (near ? 9 : 5) * k;
+      const r = (near ? 9 : 5) * k; if (digHit(p[0] - r, p[1] - r, p[0] + r + 120 * k, p[1] + r)) continue;
+      x.strokeStyle = x.fillStyle = `rgba(${col},${al.toFixed(3)})`;
       x.beginPath(); if (near) { x.moveTo(p[0] - r, p[1] - r + 4 * k); x.lineTo(p[0] - r, p[1] - r); x.lineTo(p[0] - r + 4 * k, p[1] - r); x.moveTo(p[0] + r - 4 * k, p[1] - r); x.lineTo(p[0] + r, p[1] - r); x.lineTo(p[0] + r, p[1] - r + 4 * k); }
       else { x.moveTo(p[0], p[1] - r); x.lineTo(p[0] + r, p[1]); x.lineTo(p[0], p[1] + r); x.lineTo(p[0] - r, p[1]); x.closePath(); } x.stroke();
       x.fillText(`${t.n} ${Math.round(t.d)}m`, p[0] + r + 5 * k, p[1] - (near ? r : 0));

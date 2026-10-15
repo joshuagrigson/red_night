@@ -59,7 +59,7 @@ const NET = { req: 0, done: 0 };
 })();
 
 // adaptive resolution state (declared before the renderer reads it; drsTick below)
-const DRS = { k: 1, ema: 1 / 60, t: 0, on: !navigator.webdriver, floor: IS_TOUCH ? .62 : .7 };
+const DRS = { k: 1, t: 0, on: !navigator.webdriver, floor: IS_TOUCH ? .62 : .7, buf: new Float32Array(256), srt: new Float32Array(256), n: 0, bad: 0, good: 0, hold: 0, probe: null };
 /* ---------------- renderer ---------------- */
 const canvas = $('c');
 const renderer = new T.WebGLRenderer({ canvas, antialias: !IS_TOUCH && G.quality === 'high', powerPreference: 'high-performance' });
@@ -252,12 +252,26 @@ function makeBillboard(lines, c1, c2, glyph) {
   im.src = 'assets/sky/street_env.jpg';
 })();
 /* ---------------- adaptive resolution: hold the frame rate on phones by trading pixels ---------------- */
+// Dynamic resolution, judged on the median frame of each 2 s window (one GC hitch can't move it).
+// A slow window only steps down after a second one agrees, and every step down is a probe: if the
+// next windows aren't clearly faster, the frame rate is capped by something else (iOS Low Power Mode,
+// a 30 Hz vsync lock, the CPU), so the old resolution comes back and DRS leaves it alone for 30 s.
+function drsSet(k) { k = clamp(k, DRS.floor, 1); if (Math.abs(k - DRS.k) < .01) return; DRS.k = k; applyPixelRatio(); if (typeof postSize === 'function') postSize(); }
 function drsTick(dt) {
   if (!DRS.on || G.state === 'boot') return;
-  DRS.ema = lerp(DRS.ema, dt, .05); DRS.t += dt; if (DRS.t < 2) return; DRS.t = 0;
-  let k = DRS.k; if (DRS.ema > 1 / 44) k -= .08; else if (DRS.ema < 1 / 57) k += .04;
-  k = clamp(k, DRS.floor, 1); if (Math.abs(k - DRS.k) < .01) return;
-  DRS.k = k; applyPixelRatio(); if (typeof postSize === 'function') postSize();
+  if (DRS.n < 256) DRS.buf[DRS.n++] = dt; DRS.t += dt; if (DRS.t < 2) return; DRS.t = 0;
+  const n = DRS.n; DRS.n = 0; if (n < 8) return;
+  const s = DRS.srt.subarray(0, n); s.set(DRS.buf.subarray(0, n)); s.sort(); const med = s[n >> 1];
+  if (DRS.hold > 0) DRS.hold -= 2;
+  const P0 = DRS.probe;
+  if (P0) { // judging a step down
+    if (med < P0.med * .93) { DRS.probe = null; DRS.fails = 0; return; } // it bought frames: keep it
+    if (++P0.w >= 2) { DRS.probe = null; DRS.fails = Math.min(4, (DRS.fails || 0) + 1); DRS.hold = 15 << DRS.fails; drsSet(P0.k); } // it didn't: not GPU-bound, put it back (and wait 30, 60, 120, 240 s before asking again)
+    return;
+  }
+  if (med > 1 / 44) { DRS.good = 0; if (++DRS.bad >= 2 && DRS.hold <= 0 && DRS.k > DRS.floor + .005) { DRS.bad = 0; DRS.probe = { k: DRS.k, med, w: 0 }; drsSet(DRS.k - .08); } }
+  else if (med < 1 / 57) { DRS.bad = 0; if (++DRS.good >= 3 && DRS.k < 1) { DRS.good = 0; drsSet(DRS.k + .04); } }
+  else DRS.bad = DRS.good = 0;
 }
 
 /* ---------------- audio (all synthesized) ---------------- */
@@ -489,17 +503,19 @@ function addBox(x0, x1, z0, z1, y1, opt) {
   }
   return b;
 }
-// shared result, stamp-deduped (collideCircle runs ~100x a frame); callers iterate it immediately and never nest
+// shared result, stamp-deduped (collideCircle runs ~100x a frame). The array is never truncated
+// (length = 0 drops V8's backing store, so every push reallocated): hot callers read the first n.
 const _bn = []; let _bnS = 0;
-function boxesNear(x, z) {
-  const i = Math.floor(x / CELL), j = Math.floor(z / CELL); _bn.length = 0; _bnS++;
-  for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) { const l = grid.get(gk(i + a, j + c)); if (l) for (let k = 0; k < l.length; k++) { const b = l[k]; if (b._bn !== _bnS) { b._bn = _bnS; _bn.push(b); } } }
-  return _bn;
+function boxesNearN(x, z) {
+  const i = Math.floor(x / CELL), j = Math.floor(z / CELL); let n = 0; _bnS++;
+  for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) { const l = grid.get(gk(i + a, j + c)); if (l) for (let k = 0; k < l.length; k++) { const b = l[k]; if (b._bn !== _bnS) { b._bn = _bnS; _bn[n++] = b; } } }
+  return n;
 }
+function boxesNear(x, z) { return _bn.slice(0, boxesNearN(x, z)); } // a copy, for the occasional callers (AI cover, setup)
 // push a circle out of boxes; feet y used so you can stand on low things
 function collideCircle(pos, r, feetY, h) {
-  const list = boxesNear(pos.x, pos.z); let hit = false;
-  for (const b of list) {
+  const n = boxesNearN(pos.x, pos.z); let hit = false;
+  for (let q = 0; q < n; q++) { const b = _bn[q];
     if (feetY >= b.y1 - 0.05 && !b.water) continue; // above it
     if (feetY + (h || 1.8) <= b.y0) continue;
     const cx = clamp(pos.x, b.x0, b.x1), cz = clamp(pos.z, b.z0, b.z1);
@@ -516,8 +532,8 @@ function collideCircle(pos, r, feetY, h) {
   return hit;
 }
 function groundAt(x, z, feetY) {
-  let g = 0; const list = boxesNear(x, z);
-  for (const b of list) { if (b.water) continue; if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && b.y1 <= feetY + 0.45 && b.y1 > g) g = b.y1; }
+  let g = 0; const n = boxesNearN(x, z);
+  for (let q = 0; q < n; q++) { const b = _bn[q]; if (b.water) continue; if (x >= b.x0 && x <= b.x1 && z >= b.z0 && z <= b.z1 && b.y1 <= feetY + 0.45 && b.y1 > g) g = b.y1; }
   return g;
 }
 // ray vs all boxes (slab). returns {t, n}

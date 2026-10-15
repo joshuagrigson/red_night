@@ -60,7 +60,7 @@ function init() {
   requestAnimationFrame(loop);
 }
 AUG_HOOKS.push(() => { G.stillN = 0; }); // the dial changes the frozen frame too
-window.onResizeHook = () => { G.stillN = 0; pvSize(); postSize(); HUD.scopeKey = null; if (IS_TOUCH) show('rotate', window.innerHeight > window.innerWidth && (G.state === 'title' || G.state === 'char')); };
+window.onResizeHook = () => { G.stillN = 0; pvSize(); postSize(); HUD.scopeKey = null; if (IS_TOUCH) { const port = window.innerHeight > window.innerWidth; if (port && (G.state === 'city' || G.state === 'apt')) pause(); show('rotate', port && (G.state === 'title' || G.state === 'char' || G.state === 'paused')); } };
 
 /* ---------- starting / ending a night ---------- */
 function clearNight() {
@@ -72,6 +72,8 @@ function clearNight() {
   if (P.inCar) { P.inCar.occ = false; P.inCar = null; }
   AU.engineSet(false);
   resetCombat();
+  clearTimeout(G.endT); clearTimeout(STORY.introT); G.endT = STORY.introT = 0; // a quit or restart inside the 2-3 s countdown used to fire the old night's end screen or intro
+  gridReset(); uiReset();
 }
 function startNight() {
   clearNight();
@@ -80,16 +82,17 @@ function startNight() {
   buildPlayerBody(); buildArms(); equipLoadout(false);
   // wake up on the bed
   P.pos.set(APT.x - 3.2, 0, APT.z + 2.4); P.yaw = .9; P.pitch = .9; G.wakeT = 3.2;
+  G.nightId = (G.nightId || 0) + 1; setTxt('score', '0'); setTxt('kills', '0 KILLS');
   G.state = 'apt'; G.nightT = 0; G.hour = 0; G.lastHour = -1; G.started = false; G.dawn = 0; SPAWN.t = 3; SPAWN.first = true;
   scene.fog.color.copy(APT_FOG); G.sky.uniforms.dawn.value = 0;
   show('hud', true); if (IS_TOUCH) show('touch', true); show('rotate', false);
   setTxt('distName', 'APARTMENT'); setTxt('objective', IS_TOUCH ? 'Tap a gun on the wall to gear up' : 'Gear up at the wall · door is behind you');
-  setTxt('clock', '6:58 PM'); setTxt('clockSub', 'Sirens in two minutes');
+  setTxt('clock', '6:58 PM'); setTxt('clockSub', 'Two-minute warning');
   $('fade').style.transition = 'none'; $('fade').style.opacity = 1; requestAnimationFrame(() => { $('fade').style.transition = 'opacity 2.4s'; $('fade').style.opacity = 0; });
   canvas.style.filter = 'blur(8px)';
   AU.siren(9);
-  flashBanner('WAKE UP', 'The sirens are going off', 3);
-  G.dusk = 1; gridReset(); STORY.done = {}; STORY.safe = null; STORY.queue = []; STORY.cur = null; hideBeacon(); setTimeout(storyIntro, 2600);
+  flashBanner('WAKE UP', 'Two-minute warning. It starts at seven', 3); // the 6:58 sirens are the warning (the loading line says so too)
+  G.dusk = 1; gridReset(); STORY.done = {}; STORY.safe = null; STORY.queue = []; STORY.cur = null; hideBeacon(); STORY.introT = setTimeout(storyIntro, 2600);
 }
 function leaveApartment() {
   if (G.state !== 'apt') return;
@@ -143,10 +146,11 @@ function startPossession() {
 function killPlayer(cause) {
   if (P.dead) return; P.dead = true; P.deadT = 0; P.hp = 0; P.possT = 0; G.deathCause = cause;
   flashBanner('FLATLINED', 'Taken by ' + cause, 3); AU.engineSet(false); P.inCar && (P.inCar.occ = false, P.inCar = null);
-  setTimeout(() => endScreen(false), 2600);
+  G.endT = setTimeout(() => endScreen(false), 2600);
 }
 function fmtClock(h) { const tot = 19 * 60 + Math.floor(h * 60); const hh = Math.floor(tot / 60) % 24, mm = tot % 60; const h12 = hh % 12 === 0 ? 12 : hh % 12; return `${h12}:${String(mm).padStart(2, '0')} ${hh >= 12 && hh < 24 ? 'PM' : 'AM'}`; }
 function endScreen(won) {
+  G.endT = 0; uiReset();
   G.state = 'end'; releaseMouse(); show('touch', false); show('hud', false); show('mEnd', true);
   $('endTitle').textContent = won ? 'YOU SURVIVED' : 'FLATLINED'; $('endTitle').style.color = won ? 'var(--volt)' : 'var(--blood)';
   $('endEyebrow').textContent = won ? '07:00 AM · SUNRISE' : fmtClock(G.hour) + (G.deathCause ? ' · ' + G.deathCause : '');
@@ -227,7 +231,7 @@ function updateClock(dt) {
     // sunrise: what can burn, burns
     for (const e of ENEMIES) if (!e.dead && (e.type === 'vampire' || e.type === 'demon' || e.type === 'witch')) e.die('body', null, 'sun');
     G.started = false; flashBanner('SUNRISE', 'You made it to 7:00 AM', 3); AU.siren(5); storyDawn(); hideBeacon();
-    setTimeout(() => endScreen(true), 3200);
+    G.endT = setTimeout(() => endScreen(true), 3200);
   }
 }
 

@@ -153,9 +153,9 @@ function buildInteriors() {
       const b = Math.floor(tt * 2.1); if (b !== beat) { beat = b; for (let i = 0; i < 64; i++) tiles.setColorAt(i, col.set(Math.random() < .45 ? pick(pal) : 0x0a0a0a).multiplyScalar(1.4)); tiles.instanceColor.needsUpdate = true; sp1.c.set(pick(pal)); sp2.c.set(pick(pal)); AU.thump && AU.thump(); }
       lasers.forEach((l, k) => { l.rotation.z = Math.sin(tt * (1 + k * .13) + k) * .7; l.rotation.x = Math.cos(tt * (.8 + k * .11)) * .5; });
     });
-    let lastAmbush = -9;
+    let lastAmbush = -9, ambushNight = -1;
     R.onEnter = () => {
-      if (G.hour - lastAmbush < 1) return; lastAmbush = G.hour;
+      if (ambushNight === G.nightId && G.hour - lastAmbush < 1) return; lastAmbush = G.hour; ambushNight = G.nightId; // a new night clears the cooldown
       flashBanner('AMBUSH', 'They were waiting on the dance floor', 2.2); AU.roar && AU.roar(0, 1);
       const types = ['vampire', 'vampire', 'purger', 'purger', 'vampire', G.hour > 4 ? 'demon' : 'purger'];
       types.forEach((t, k) => { const e = new Enemy(t, 1800 - 8 + (k % 3) * 8, -6 + Math.floor(k / 3) * 4); e.clubber = true; ENEMIES.push(e); });

@@ -837,7 +837,7 @@ function shake(a) { P.shakeA = Math.min(1.2, P.shakeA + a); }
 /* ---------------- third person body animation ---------------- */
 function updateBody(dt) {
   if (!PBODY) return;
-  const show = G.state === 'city' && G.camMode === 'tpp' && !P.inCar;
+  const show = (G.state === 'city' && G.camMode === 'tpp' || G.state === 'photo' && G.pausedFrom === 'city') && !P.inCar;
   PBODY.root.visible = show || (G.state === 'city' && P.dead);
   if (!PBODY.root.visible) return;
   const s = P.s(), w = s.w; const st = PBODY.st;

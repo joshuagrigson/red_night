@@ -382,7 +382,7 @@ function streetFurniture() {
   }
   // parked cars (drivable) & wrecks
   const glowCols = [0xff2a6d, 0x05d9e8, 0xf3e600, 0xb04dff, 0x3dff6a];
-  const nPark = G.quality === 'high' ? 20 : 12; let nWreck = 6;
+  const nPark = G.quality === 'high' ? 20 : 8; let nWreck = 6; // parked cars were most of the phone's draw-call rise
   for (let k = 0; k < nPark + nWreck + 10; k++) {
     const alongX = srand() < .5, line = spick(ROADS.slice(1, -1)), t = sr(-HALF + 10, HALF - 10), side = srand() < .5 ? -3.3 : 3.3;
     const x = alongX ? t : line + side, z = alongX ? line + side : t;
@@ -803,6 +803,15 @@ function buildApartment() {
 const W_ = id => W[id];
 
 /* ---------- drivable cars ---------- */
+// underglow is part of the net layer: one strip + pool material per colour, faded by the Augment dial (gone at 0)
+const CAR_GLOW = new Map();
+function carGlow(c) {
+  let m = CAR_GLOW.get(c); if (m) return m;
+  const strip = NEON(c).clone(), on = strip.color.clone(), off = new T.Color(0x16161a);
+  const pool = new T.MeshBasicMaterial({ map: glowTex, color: lc(c), transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false });
+  const f = a => { const t = smooth01((a - .08) / .5); strip.color.copy(off).lerp(on, t); pool.opacity = .8 * t; pool.visible = t > .01; };
+  m = { strip, pool }; CAR_GLOW.set(c, m); AUG_HOOKS.push(f); f(G.aug); return m;
+}
 function mergeLocal(group) {
   group.updateMatrixWorld(true); const inv = new T.Matrix4().copy(group.matrixWorld).invert(); const by = new Map();
   group.children.slice().forEach(o => { if (!o.isMesh || o.userData.keep) return; const k = o.material.uuid; if (!by.has(k)) by.set(k, []); by.get(k).push(o); });
@@ -830,10 +839,10 @@ class Car {
     mesh(new T.BoxGeometry(1.8, .07, .05), NEON(0xff1f3d), 0, .8, 2.31, this.g);
     mesh(new T.BoxGeometry(.5, .08, .05), NEON(0xeaf6ff), -.65, .8, -2.31, this.g); mesh(new T.BoxGeometry(.5, .08, .05), NEON(0xeaf6ff), .65, .8, -2.31, this.g);
     if (glow != null && Math.random() > .22) glow = null; // underglow is a gang-car thing, not every car
-    if (glow != null) mesh(new T.BoxGeometry(2.07, .03, 3.6), NEON(glow), 0, .5, 0, this.g);
+    if (glow != null) mesh(new T.BoxGeometry(2.07, .03, 3.6), carGlow(glow).strip, 0, .5, 0, this.g);
     this.wheels = [];
     for (const [a, b] of [[-1, -1.5], [1, -1.5], [-1, 1.5], [1, 1.5]]) { const w = mesh(new T.CylinderGeometry(.36, .36, .28, 14), dark, a * .98, .36, b, this.g); w.rotation.z = Math.PI / 2; this.wheels.push(w); }
-    if (glow != null) { const ug = new T.Mesh(new T.PlaneGeometry(3.2, 6), new T.MeshBasicMaterial({ map: glowTex, color: lc(glow), transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false, toneMapped: false }));
+    if (glow != null) { const ug = new T.Mesh(new T.PlaneGeometry(3.2, 6), carGlow(glow).pool);
     ug.rotation.x = -Math.PI / 2; ug.position.y = .04; this.g.add(ug); }
     this.beams = new T.Mesh(new T.ConeGeometry(2.5, 14, 12, 1, true), new T.MeshBasicMaterial({ color: 0xcfe6ff, transparent: true, opacity: .0, blending: T.AdditiveBlending, depthWrite: false, side: T.DoubleSide }));
     this.beams.rotation.x = -Math.PI / 2; this.beams.position.set(0, .8, -9.3); this.g.add(this.beams);
