@@ -83,15 +83,16 @@ function dropMag(w) {
   const len = w.cls === 'pistol' ? .12 : w.cls === 'lmg' ? .2 : .18, depth = w.cls === 'pistol' ? .03 : .06;
   const m = new T.Mesh(gBox(.03, len, depth), STD(w.cls === 'pistol' ? 0x18181c : 0x24221e, .5, .6));
   const f = P.fwd(), r = new T.Vector3(Math.cos(P.yaw), 0, -Math.sin(P.yaw));
-  m.position.copy(P.eye()).addScaledVector(f, .42).addScaledVector(r, .05).add(new T.Vector3(0, -.32, 0)); scene.add(m);
-  MAGS.push({ m, v: new T.Vector3(f.x * .6 + rand(-.2, .2), -.6, f.z * .6 + rand(-.2, .2)).add(P.vel.clone().multiplyScalar(.8)), w: new T.Vector3(rand(-6, 6), rand(-3, 3), rand(-6, 6)), life: 30, rest: false });
+  m.position.copy(P.eye()).addScaledVector(f, .42).addScaledVector(r, .05); m.position.y -= .32; scene.add(m);
+  // it lands on whatever the player stands on (rooftop, room floor), not always the street plane
+  MAGS.push({ m, v: new T.Vector3(f.x * .6 + rand(-.2, .2), -.6, f.z * .6 + rand(-.2, .2)).addScaledVector(P.vel, .8), w: new T.Vector3(rand(-6, 6), rand(-3, 3), rand(-6, 6)), life: 30, rest: false, floor: groundAt(P.pos.x, P.pos.z, P.pos.y + .1) + .03 });
   if (MAGS.length > 14) { const o = MAGS.shift(); scene.remove(o.m); }
 }
 function updateMags(dt) {
   for (const g of MAGS) {
     g.life -= dt; if (g.rest) continue;
     g.v.y -= 9.8 * dt; g.m.position.addScaledVector(g.v, dt); g.m.rotation.x += g.w.x * dt; g.m.rotation.y += g.w.y * dt; g.m.rotation.z += g.w.z * dt;
-    if (g.m.position.y < .03) { g.m.position.y = .03; if (Math.abs(g.v.y) > 1.2) { g.v.y *= -.32; g.v.x *= .6; g.v.z *= .6; g.w.multiplyScalar(.5); AU.play('foley_magdrop', { vol: .35, rate: rand(.9, 1.1) }) || AU.nz(.05, 'bandpass', 1800, 900, 3, .12); } else { g.rest = true; g.m.rotation.set(Math.PI / 2, rand(0, TAU), 0); } }
+    if (g.m.position.y < g.floor) { g.m.position.y = g.floor; if (Math.abs(g.v.y) > 1.2) { g.v.y *= -.32; g.v.x *= .6; g.v.z *= .6; g.w.multiplyScalar(.5); AU.play('foley_magdrop', { vol: .35, rate: rand(.9, 1.1) }) || AU.nz(.05, 'bandpass', 1800, 900, 3, .12); } else { g.rest = true; g.m.rotation.set(Math.PI / 2, rand(0, TAU), 0); } }
   }
 }
 
@@ -138,12 +139,12 @@ function decalPool(kind, tint, cap) {
   const im = new T.InstancedMesh(new T.PlaneGeometry(1, 1), mat, cap || 96); im.frustumCulled = false; im.count = 0; im.userData.dyn = true; scene.add(im);
   return DEC[k] = { im, i: 0, cap: cap || 96 };
 }
-const _dm = new T.Matrix4(), _dq = new T.Quaternion(), _dz = new T.Vector3(0, 0, 1), _dp = new T.Vector3(), _ds = new T.Vector3();
+const _dm = new T.Matrix4(), _dq = new T.Quaternion(), _dq2 = new T.Quaternion(), _dz = new T.Vector3(0, 0, 1), _dp = new T.Vector3(), _ds = new T.Vector3();
 function surfDecal(p, n, surf, size) {
   const S = SURF[surf] || SURF.concrete; if (!S.decal) return;
-  const tint = S.decal === 'hole' ? new T.Color(S.col).lerp(new T.Color(0xffffff), .55) : new T.Color(0xffffff);
-  const D = decalPool(S.decal, tint.getHex());
-  _dq.setFromUnitVectors(_dz, n); _dq.multiply(new T.Quaternion().setFromAxisAngle(_dz, Math.random() * TAU));
+  if (S.tint === undefined) S.tint = S.decal === 'hole' ? new T.Color(S.col).lerp(new T.Color(0xffffff), .55).getHex() : 0xffffff;
+  const D = decalPool(S.decal, S.tint);
+  _dq.setFromUnitVectors(_dz, n); _dq.multiply(_dq2.setFromAxisAngle(_dz, Math.random() * TAU));
   _dp.copy(p).addScaledVector(n, .015); _ds.setScalar(size * (S.decal === 'crack' ? 2.4 : 1));
   _dm.compose(_dp, _dq, _ds); D.im.setMatrixAt(D.i, _dm); D.i = (D.i + 1) % D.cap; D.im.count = Math.max(D.im.count, D.i === 0 ? D.cap : D.i); D.im.instanceMatrix.needsUpdate = true;
 }
@@ -151,7 +152,7 @@ function impact(p, n, surf, opts) {
   const S = SURF[surf] || SURF.concrete; const o = opts || {};
   surfDecal(p, n, surf, o.size || (o.pellet ? .1 : .16));
   if (o.fx === false) return;
-  const dc = C(S.dust);
+  const dc = S.dc || (S.dc = C(S.dust));
   burst(FXN, p.clone().addScaledVector(n, .05), o.pellet ? 1 : 3, 1.1, .55, .08, .28, dc, -.3, .45, .35, 2);         // dust puff
   if (S.spark && Math.random() < S.spark) burst(FXA, p, o.pellet ? 2 : 6, 5, .22, .05, .02, COL.spark, 14, .4);    // sparks
   if (surf === 'glass') burst(FXN, p, 10, 3, .7, .04, .05, C(0xd8f0ff), 11, .2);
@@ -174,14 +175,17 @@ function surfOfHit(h, p) {
 }
 
 /* ---------- vehicles: ray test + damage ---------- */
-const _cl = new T.Vector3(), _cd = new T.Vector3();
+const _cl = new T.Vector3(), _cd = new T.Vector3(), CAR_MN = [-1.03, .34, -2.32], CAR_MX = [1.03, 1.42, 2.32];
+// every hitscan pellet and every AI line-of-sight check runs this over all cars: skip cars nowhere near the ray (a car fits
+// in a 2.7 m sphere) before the box test, and keep the box bounds out of the loop (two arrays per car per ray before)
 function rayCar(o, d, maxT) {
   let best = null, bt = maxT;
   for (const c of CARS) {
-    if (c.gone) continue; const dx = c.pos.x - o.x, dz = c.pos.z - o.z; if (dx * dx + dz * dz > (bt + 4) * (bt + 4)) continue;
+    if (c.gone) continue; const dx = c.pos.x - o.x, dz = c.pos.z - o.z, dy = c.g.position.y + .9 - o.y, tc = dx * d.x + dy * d.y + dz * d.z;
+    if (tc < -2.7 || tc > bt + 2.7 || dx * dx + dy * dy + dz * dz - tc * tc > 7.3) continue;
     const ch = Math.cos(-c.h), sh = Math.sin(-c.h);
     const rx = o.x - c.pos.x, rz = o.z - c.pos.z; _cl.set(rx * ch + rz * sh, o.y - c.g.position.y, -rx * sh + rz * ch); _cd.set(d.x * ch + d.z * sh, d.y, -d.x * sh + d.z * ch);
-    const mn = [-1.03, .34, -2.32], mx = [1.03, 1.42, 2.32]; let t0 = 0, t1 = bt, ax = -1, sg = 0; let ok = true;
+    const mn = CAR_MN, mx = CAR_MX; let t0 = 0, t1 = bt, ax = -1, sg = 0; let ok = true;
     for (let a = 0; a < 3; a++) {
       const oa = _cl.getComponent(a), da = _cd.getComponent(a);
       if (Math.abs(da) < 1e-9) { if (oa < mn[a] || oa > mx[a]) { ok = false; break; } continue; }
@@ -239,9 +243,10 @@ function carExplode(c) {
   addScore(150, 'VEHICLE DESTROYED');
 }
 // per-frame vehicle damage state: smoke → fire → hop after the blast
+const _hood = new T.Vector3(), SMOKE_K = C(0x1a1a1a), SMOKE_G = C(0x8a8a90);
 function updateCarDamage(dt) {
   for (const c of CARS) {
-    if (!c.dm) continue; const hood = c.pos.clone().addScaledVector(c.fwd(), 1.5).setY(1.05);
+    if (!c.dm) continue; const hood = _hood.set(c.pos.x - Math.sin(c.h) * 1.5, 1.05, c.pos.z - Math.cos(c.h) * 1.5); // every hit car, every frame: no allocation
     if (c.dead) {
       if (c.hopV !== undefined) { c.g.position.y += c.hopV * dt; c.hopV -= 18 * dt; c.h += c.spin * dt; c.spin *= .96; if (c.g.position.y <= 0) { c.g.position.y = 0; c.hopV = c.hopV < -3 ? -c.hopV * .25 : undefined; } c.g.rotation.y = c.h; }
       if (c.fire) { c.fire.p.copy(c.pos).setY(1.2); c.fireLS.p.copy(c.pos).setY(2.2); }
@@ -249,7 +254,7 @@ function updateCarDamage(dt) {
       continue;
     }
     const k = c.dm.hp / c.dm.max;
-    if (k < .6 && Math.random() < dt * (k < .3 ? 14 : 6)) FXN.emit(hood.x + rand(-.3, .3), hood.y, hood.z + rand(-.3, .3), rand(-.2, .2), rand(.8, 1.6), rand(-.2, .2), rand(1.2, 2.2), .45, .4, k < .3 ? C(0x1a1a1a) : C(0x8a8a90), -.3);
+    if (k < .6 && Math.random() < dt * (k < .3 ? 14 : 6)) FXN.emit(hood.x + rand(-.3, .3), hood.y, hood.z + rand(-.3, .3), rand(-.2, .2), rand(.8, 1.6), rand(-.2, .2), rand(1.2, 2.2), .45, .4, k < .3 ? SMOKE_K : SMOKE_G, -.3);
     if (k < .3) {
       if (!c.hoodFire) { c.hoodFire = { p: hood.clone(), s: .6 }; FIRES.push(c.hoodFire); AU.play('fire_whoosh', { vol: .5 }) || AU.nz(.6, 'lowpass', 900, 200, 1, .25); }
       c.hoodFire.p.copy(hood); c.dm.hp -= dt * 12; if (c.dm.hp <= 0) carExplode(c); // it cooks off on its own

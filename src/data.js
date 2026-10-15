@@ -57,7 +57,9 @@ const WDEF = [
   ['chainsaw', 'special', 'Chainsaw', 'Hold fire to rip', 'saw', { kind: 'saw', dmg: 420, reach: 2.5, mag: 100, res: 300, reload: 2.4, mob: .9 }],
   ['nodachi', 'special', 'Red Nodachi', 'Long two-hand sword', 'nodachi', { kind: 'melee', dmg: 230, swing: .78, reach: 3.5, mob: .96 }],
   ['stars', 'special', 'Ninja Stars', 'Thrown shuriken · fast', 'stars', { kind: 'throw', dmg: 95, rpm: 170, mag: 12, res: 36, reload: 1.0, hip: .6, ads: .2, recV: .4, recH: .2, adsT: .12, mob: 1.05, head: 1.8, speed: 55 }],
-  ['karambit', 'special', 'Karambit & Dagger', 'Dual blades · combo', 'karambit', { kind: 'melee', dmg: 72, swing: .24, reach: 1.9, mob: 1.08, dual: 1 }],
+  ['karambit', 'special', 'Karambit & Dagger', 'Dual blades · combo', 'karambit', { kind: 'melee', dmg: 72, swing: .24, reach: 1.9, mob: 1.08, dual: 1, offhand: 'dagger' }],
+  // the karambit's off-hand blade (not in any menu): its own double-edged dagger instead of a shrunken Slasher
+  ['dagger', 'melee', 'Dagger', 'Double-edged off-hand blade', 'dagger', { kind: 'melee', dmg: 60, swing: .3, reach: 1.7, mob: 1.06 }],
 ];
 const W = {};
 for (const [id, cls, name, sub, model, s] of WDEF) {
@@ -112,11 +114,14 @@ function allowedAtt(w) {
     case 'pistol': return { optic: ['iron', 'reddot', 'holo'], barrel: ['std', 'long', 'supp', 'comp'], under: ['none', 'laser'], rear: all('rear') };
     case 'smg': return { optic: ['iron', 'reddot', 'holo', 'acog'], barrel: all('barrel'), under: all('under'), rear: all('rear'), stock: all('stock') };
     case 'shotgun': return { optic: ['iron', 'reddot', 'holo'], barrel: ['std', 'long', 'short', 'supp'], under: all('under'), rear: all('rear'), stock: w.id === 'sawed' ? undefined : all('stock') };
-    case 'sniper': return { optic: all('optic'), barrel: all('barrel'), under: all('under'), rear: all('rear'), stock: all('stock') };
+    case 'sniper': return { optic: builtinScope(w) ? ['scope4', 'scope8', 'scope12'] : all('optic'), barrel: all('barrel'), under: all('under'), rear: all('rear'), stock: all('stock') };
     default: return { optic: ['iron', 'reddot', 'holo', 'acog', 'scope4'], barrel: all('barrel'), under: all('under'), rear: all('rear'), stock: all('stock') };
   }
 }
 function attOf(cat, id) { return ATT[cat].find(a => a.id === id) || ATT[cat][0]; }
+// a modelled gun with its own scope (Tundra SVD, Anvil .50): no optic mesh goes on top, the pick only sets the magnification
+const builtinScope = w => !!(MODELS[w.id] && MODELS[w.id].builtinScope);
+function opticOf(w, cfg) { const a = attOf('optic', cfg.optic); return builtinScope(w) && !a.overlay ? attOf('optic', w.optic || 'scope8') : a; }
 
 const CAMOS = [
   { id: 'stock', name: 'Factory' }, { id: 'carbon', name: 'Midnight Carbon' }, { id: 'tiger', name: 'Neon Tiger' }, { id: 'blood', name: 'Blood Moon' },
@@ -136,7 +141,7 @@ function statsOf(w, cfg) {
   const al = allowedAtt(w);
   if (MODELS[w.id] && MODELS[w.id].scene && MODELS[w.id].builtinDot && cfg.optic === 'iron') { s.zoom = 1.25; s.ret = 1; }
   for (const cat of ['optic', 'barrel', 'under', 'rear', 'stock']) {
-    if (!al[cat]) continue; const a = attOf(cat, cfg[cat]);
+    if (!al[cat]) continue; const a = cat === 'optic' ? opticOf(w, cfg) : attOf(cat, cfg[cat]);
     if (a.range) { s.r1 *= a.range; s.r2 *= a.range; }
     if (a.recV) s.recV *= a.recV; if (a.recH) s.recH *= a.recH; if (a.hip) s.hip *= a.hip;
     if (a.mob) s.mob += a.mob; if (a.adsT) s.adsT = Math.max(.08, s.adsT + a.adsT);
@@ -420,6 +425,18 @@ function buildWeapon(w, cfg, forWorld) {
       Object.assign(meta, { tip: -.14 });
     }
   }
+  else if (m === 'dagger') {
+    // grip centred where the Slasher's sits (0, -.04, .07), so it drops into the off hand in its place; ~.3 m overall
+    const y = -.04, steel = cfg.camo && cfg.camo !== 'stock' ? M.body : M.chrome;
+    const sh = new T.Shape(); sh.moveTo(0, -.0135); sh.lineTo(.13, -.009); sh.quadraticCurveTo(.17, -.004, .185, 0); sh.quadraticCurveTo(.17, .004, .13, .009); sh.lineTo(0, .0135); sh.lineTo(0, -.0135);
+    const bg = new T.ExtrudeGeometry(sh, { depth: .0012, bevelEnabled: true, bevelThickness: .0022, bevelSize: .0035, bevelSegments: 1 }); bg.translate(0, 0, -.0006); // the bevel gives the diamond section and two edges
+    const bl = new T.Mesh(bg, steel); bl.rotation.y = Math.PI / 2; bl.position.set(0, y, .014); add(bl);
+    B(.0064, .0015, .11, M.dark, 0, y, -.045);                                                   // fuller, both faces
+    B(.016, .066, .012, M.dark, 0, y, .02); S(.0075, M.dark, 0, y + .034, .02); S(.0075, M.dark, 0, y - .034, .02); // cross-guard
+    Cy(.0105, .0118, .09, M.poly, 0, y, .07, 10); for (let i = 0; i < 4; i++) Cy(.0124, .0124, .005, M.dark, 0, y, .034 + i * .023, 10); // wrapped grip
+    S(.0155, M.dark, 0, y, .123, 1, 1, .8);                                                        // pommel
+    Object.assign(meta, { tip: -.17, grip: new T.Vector3(0, y, .07) });
+  }
   else if (m === 'stars') {
     const sh = new T.Shape(); for (let i = 0; i < 8; i++) { const a = i / 8 * TAU, r = i % 2 ? .016 : .055; i ? sh.lineTo(Math.cos(a) * r, Math.sin(a) * r) : sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
     const hole = new T.Path(); hole.absarc(0, 0, .008, 0, TAU, true); sh.holes.push(hole);
@@ -451,12 +468,14 @@ function buildWeapon(w, cfg, forWorld) {
   if (MODELS[w.id] && !MODELS[w.id].scene) loadModel(w.id);
   const glb = MODELS[w.id] && MODELS[w.id].scene ? MODELS[w.id] : null;
   if (glb) {
-    // AI-generated model: hide the procedural body, place the mesh by its measured anchor points
-    g.traverse(o => { if (o.isMesh) o.visible = false; });
+    // AI-generated model: drop the procedural body (hidden meshes still cost a matrix update each per frame, on every purger's gun), place the mesh by its measured anchor points
+    const proc = []; g.traverse(o => { if (o.isMesh) proc.push(o); }); for (const o of proc) o.parent.remove(o);
+    // twoSided (viewmodel only): the Pocket Macro's red dot sits at the muzzle end, so ADS pulls the near plane through its
+    // frame and weapon light; with front faces only the cut read as a see-through, "translucent" light
     const A = glb.anchors, k = glb.len / glb.nativeLen, m = glb.scene.clone(true);
     if (glb.q) m.quaternion.premultiply(new T.Quaternion(glb.q[0], glb.q[1], glb.q[2], glb.q[3]));
     const mid = new T.Group(); mid.add(m); if (glb.off) mid.position.set(glb.off[0], glb.off[1], glb.off[2]);
-    m.traverse(o => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.envMapIntensity = .55; o.material.side = T.FrontSide; o.material.color.multiplyScalar(glb.tint || .7); o.material.roughness = Math.min(1, (o.material.roughness || 1) * 1.15);
+    m.traverse(o => { if (o.isMesh && o.material) { o.material = o.material.clone(); o.material.envMapIntensity = .55; o.material.side = glb.twoSided && !forWorld ? T.DoubleSide : T.FrontSide; o.material.color.multiplyScalar(glb.tint || .7); o.material.roughness = Math.min(1, (o.material.roughness || 1) * 1.15);
       if (glb.glow && o.material.map) { o.material.emissiveMap = o.material.map; o.material.emissive = new T.Color(glb.glow, glb.glow, glb.glow); }
       applyCamo(o.material, cfg.camo); o.frustumCulled = !!forWorld; } });
     const holder = new T.Group(); holder.add(mid); holder.scale.setScalar(k);
@@ -464,6 +483,7 @@ function buildWeapon(w, cfg, forWorld) {
     const at = a => new T.Vector3(holder.position.x + k * a[0], holder.position.y + k * a[1], holder.position.z + k * a[2]);
     const mz = at(A.muzzle), sp = at(A.sup), si = at(A.sight), rl = at(A.rail);
     Object.assign(meta, { muzzleZ: mz.z, boreY: mz.y, sup: sp, top: rl.y, optZ: rl.z, underZ: sp.z - .02, underY: sp.y - .015, frontZ: mz.z + .05, hasStock: false, irons: true, ironY: si.y, sightZ: si.z, glb: 1 });
+    if (glb.scopeY !== undefined) meta.scopeY = holder.position.y + k * glb.scopeY;
   }
   part = 'att';
   let sightY = meta.top + .016;
@@ -472,7 +492,8 @@ function buildWeapon(w, cfg, forWorld) {
   if (w.kind === 'gun') {
     const opt = al.optic ? cfg.optic : 'iron';
     const oz = meta.optZ, ty = meta.top;
-    if (opt === 'iron') {
+    if (glb && glb.builtinScope) sightY = glb.scopeY !== undefined ? meta.scopeY : meta.ironY; // the model's own scope: ADS lines up its eyepiece axis (scopeY, measured), nothing is drawn over it
+    else if (opt === 'iron') {
       if (meta.irons) sightY = meta.ironY;
       else { B(.022, .02, .012, M.metal, sx, ty + .01, oz + .1); B(.006, .024, .008, M.metal, sx, ty + .012, Math.max(meta.frontZ, oz - .32)); sightY = ty + .018; }
     } else if (opt === 'reddot') {
@@ -539,13 +560,13 @@ const MODELS = {
   slasher: {"url":"assets/slasher.glb","q":[-0.26296,-0.50099,0.27338,0.7779],"off":[0.0801,-0.2368,0.3677],"nativeLen":1.4007,"len":0.4,"anchors":{"grip":[0,0.1425,0.5323],"sup":[0,0.1425,0.6023],"sight":[0,0.2727,0],"rail":[0,0.2727,0],"muzzle":[0,0.0997,-0.7003]},"tint":0.7},
   patriot15: {"url":"assets/patriot15.glb","q":[-0.03159,0.00375,0.00787,0.99946],"off":[0.0064,0.0126,0.0152],"nativeLen":0.9976,"len":0.84,"anchors":{"grip":[0,0.1583,0.0466],"sup":[0,0.2002,-0.2607],"sight":[0,0.3119,-0.1257],"rail":[0,0.2886,-0.0466],"muzzle":[0,0.216,-0.4982]},"builtinDot":1,"tint":0.7},
   polymer19: {"url":"assets/polymer19.glb","q":[-0.07683,-0.70269,0.07338,0.70352],"off":[-0.0032,-0.0609,0.1083],"nativeLen":1.0407,"len":0.19,"anchors":{"grip":[0,0.3966,0.3126],"sup":[0,0.3766,0.3326],"sight":[0,0.6254,0.1496],"rail":[0,0.6663,0.4098],"muzzle":[0,0.5643,-0.5204]},"tint":0.75},
-  macro: {"url":"assets/macro.glb","q":[-0.10006,-0.7013,0.10388,0.69812],"off":[0.0018,0.0723,0.1092],"nativeLen":0.9961,"len":0.17,"anchors":{"grip":[0,0.5297,0.4211],"sup":[0,0.5097,0.4411],"sight":[0,0.839,-0.2304],"rail":[0,0.7978,0.33],"muzzle":[0,0.6063,-0.4981]},"tint":0.75},
+  macro: {"url":"assets/macro.glb","q":[-0.10006,-0.7013,0.10388,0.69812],"off":[0.0018,0.0723,0.1092],"nativeLen":0.9961,"len":0.17,"anchors":{"grip":[0,0.5297,0.4211],"sup":[0,0.5097,0.4411],"sight":[0,0.839,-0.2304],"rail":[0,0.7978,0.33],"muzzle":[0,0.6063,-0.4981]},"twoSided":1,"tint":0.75},
   stutter18: {"url":"assets/stutter18.glb","q":[-0.00215,-0.70934,0.00456,0.70485],"off":[0.002,-0.0024,0.0054],"nativeLen":0.9781,"len":0.23,"anchors":{"grip":[0,0.3865,0.3196],"sup":[0,0.3665,0.3396],"sight":[0,0.6108,0.1161],"rail":[0,0.656,0.3851],"muzzle":[0,0.5654,-0.489]},"tint":0.75},
   kurz5: {"url":"assets/kurz5.glb","q":[-0.102,-0.69858,0.09998,0.70114],"off":[0.0002,0.0199,0.0874],"nativeLen":1.0242,"len":0.56,"anchors":{"grip":[0,0.3556,0.2473],"sup":[0,0.3123,-0.2212],"sight":[0,0.4574,0.1472],"rail":[0,0.4389,-0.1293],"muzzle":[0,0.3224,-0.5121]},"tint":0.75},
   unit45: {"url":"assets/unit45.glb","q":[-0.01815,0.70637,-0.01182,0.70751],"off":[0.0032,-0.0015,0.0154],"nativeLen":0.982,"len":0.62,"anchors":{"grip":[0,0.3316,0.2186],"sup":[0,0.3028,-0.1995],"sight":[0,0.4046,0.1289],"rail":[0,0.4084,-0.1117],"muzzle":[0,0.3333,-0.491]},"tint":0.75},
   battlefal: {"url":"assets/battlefal.glb","q":[-0.08648,-0.70161,0.0747,0.70334],"off":[-0.0041,0.0093,0.0581],"nativeLen":0.9934,"len":1.04,"anchors":{"grip":[0,0.2351,0.2337],"sup":[0,0.2368,-0.1891],"sight":[0,0.322,0.1428],"rail":[0,0.3086,-0.1254],"muzzle":[0,0.2485,-0.4967]},"tint":0.75},
-  tundra: {"url":"assets/tundra.glb","q":[-0.03953,0.70536,-0.03944,0.70664],"off":[-0.0003,-0.0101,0.0161],"nativeLen":0.9914,"len":1.2,"anchors":{"grip":[0,0.1427,0.2664],"sup":[0,0.1447,-0.1301],"sight":[0,0.2938,0.0929],"rail":[0,0.2839,0.1475],"muzzle":[0,0.138,-0.4957]},"tint":0.75},
-  anvil50: {"url":"assets/anvil50.glb","q":[-0.02827,-0.70789,0.03506,0.70488],"off":[-0.0005,0.0131,0.0204],"nativeLen":0.9857,"len":1.28,"anchors":{"grip":[0,0.1746,0.3142],"sup":[0,0.1638,-0.0801],"sight":[0,0.3319,0.1417],"rail":[0,0.3482,0.1959],"muzzle":[0,0.2508,-0.4928]},"tint":0.75},
+  tundra: {"url":"assets/tundra.glb","q":[-0.03953,0.70536,-0.03944,0.70664],"off":[-0.0003,-0.0101,0.0161],"nativeLen":0.9914,"len":1.2,"anchors":{"grip":[0,0.1427,0.2664],"sup":[0,0.1447,-0.1301],"sight":[0,0.2938,0.0929],"rail":[0,0.2839,0.1475],"muzzle":[0,0.138,-0.4957]},"builtinScope":1,"scopeY":0.2698,"tint":0.75},
+  anvil50: {"url":"assets/anvil50.glb","q":[-0.02827,-0.70789,0.03506,0.70488],"off":[-0.0005,0.0131,0.0204],"nativeLen":0.9857,"len":1.28,"anchors":{"grip":[0,0.1746,0.3142],"sup":[0,0.1638,-0.0801],"sight":[0,0.3319,0.1417],"rail":[0,0.3482,0.1959],"muzzle":[0,0.2508,-0.4928]},"builtinScope":1,"scopeY":0.3049,"tint":0.75},
   twin: {"url":"assets/twin.glb","q":[-0.15809,-0.68834,0.13832,0.69431],"off":[-0.0086,-0.1779,0.1224],"nativeLen":1.0419,"len":1.08,"anchors":{"grip":[0,0.1322,0.3972],"sup":[0,0.1049,-0.0195],"sight":[0,0.1983,0.1367],"rail":[0,0.1711,0.2722],"muzzle":[0,0.0986,-0.5209]},"tint":0.75},
   sawed: {"url":"assets/sawed.glb","q":[-0.70604,-0.02507,0.7067,0.03811],"off":[0.0038,0.2056,0.0142],"nativeLen":0.9789,"len":0.66,"anchors":{"grip":[0,0.0793,0.1285],"sup":[0,0.0567,-0.2631],"sight":[0,0.124,0.1407],"rail":[0,0.0921,0.011],"muzzle":[0,0.0845,-0.4894]},"tint":0.75},
   autoloader: {"url":"assets/autoloader.glb","q":[-0.10629,-0.69921,0.11229,0.698],"off":[0.002,-0.121,0.0696],"nativeLen":1.0479,"len":0.95,"anchors":{"grip":[0,0.1974,0.4126],"sup":[0,0.1289,-0.0065],"sight":[0,0.2904,0.1506],"rail":[0,0.2966,0.2869],"muzzle":[0,0.1396,-0.5239]},"tint":0.75},

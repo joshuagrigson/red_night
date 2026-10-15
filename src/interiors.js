@@ -80,6 +80,9 @@ function exitRoom(toDoor) {
     G.inside = null; P.pos.copy(door.ret); P.vel.set(0, 0, 0); P.yaw = 0; G.dist = -1; G.state = 'city'; $('fade').style.opacity = 0;
   }, 380);
 }
+// a new night (or quit to title) while still inside a room: nothing reset G.inside, so the next night ran with the spawner,
+// crowd and traffic paused, the rain off and the interior fog over the street. Called from the resetCombat hook in ai.js.
+function interiorsReset() { if (!G.inside) return; const R = ROOMS[G.inside]; R && R.onExit && R.onExit(); G.inside = null; G.door = null; }
 
 function buildInteriors() {
   // ---------------- GUN SHOP (Red River Arms / Pharaoh Arms share one back room)

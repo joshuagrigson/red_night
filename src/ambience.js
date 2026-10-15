@@ -135,7 +135,7 @@ function ambGun(x, z, n, gap, heavy, delay) {
   try {
     const c = AMB.c, t0 = c.currentTime + .03 + (delay || 0), g = v.env.gain, sb = SFXbuf('gun_distant');
     let t = t0, tail = 0;
-    if (sb && n <= 3 && Math.random() < .6) { g.setValueAtTime(.8, t0); for (let i = 0; i < n; i++) { const s = avB(v, sb, rand(.78, 1.08)); s.connect(v.env); s.when = t; tail = t + sb.duration / s.playbackRate.value + .05; t += gap * rand(.8, 1.3); } }
+    if (sb && n <= 3 && Math.random() < .6) { g.setValueAtTime(.8, t0); for (let i = 0; i < n; i++) { const s = avB(v, sb, rand(.78, 1.08)); s.connect(v.env); s._at = t; tail = t + sb.duration / s.playbackRate.value + .05; t += gap * rand(.8, 1.3); } }
     else {
       const s = avN(v, rand(.8, 1.15)), bp = avF(v, 'bandpass', rand(700, 1500), .6), lo = avF(v, 'lowpass', 230, .8), lg = avG(v, heavy ? 1.8 : 1.2);
       s.connect(bp); bp.connect(v.env); s.connect(lo); lo.connect(lg); lg.connect(v.env);
@@ -145,7 +145,7 @@ function ambGun(x, z, n, gap, heavy, delay) {
     const dl = c.createDelay(1); v.nodes.push(dl); dl.delayTime.value = rand(.16, .6); const el = avF(v, 'lowpass', 1100, .5), eg = avG(v, rand(.22, .42));
     v.env.connect(dl); dl.connect(el); el.connect(eg); eg.connect(v.sp);
     v.left = v.src.length; const end = Math.max(t + 1.4, tail);
-    for (const s of v.src) { s.onended = () => { if (--v.left <= 0) avFree(v); }; s.start(s.when || t0, s.nz ? Math.random() * 1.5 : 0); s.stop(end); }
+    for (const s of v.src) { s.onended = () => { if (--v.left <= 0) avFree(v); }; s.start(s._at || t0, s.nz ? Math.random() * 1.5 : 0); s.stop(end); }
   } catch (e) { avFree(v); }
 }
 // a cruiser crossing the grid somewhere: wail or yelp, Doppler as it passes

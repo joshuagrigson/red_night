@@ -165,13 +165,24 @@ const ET = {
 };
 const ENEMIES = [], WISPS = [], PROJ = [];
 let enemyId = 0;
+// scanned model per type, and every model a type can end up wearing (the shapeshifter's beast, the reptilian under the suit)
+const ENEMY_GLB = { purger: 'purger', demon: 'demon', vampire: 'vampire', shifter: 'civilian', reptile: 'suit', witch: 'witch' };
+const ENEMY_NEEDS = { purger: ['purger'], demon: ['demon'], vampire: ['vampire'], shifter: ['civilian', 'beast'], reptile: ['suit', 'reptile'], witch: ['witch'] };
+const ATK_CLIP = { demon: 'punch', vampire: 'slash', shifter: 'punch', reptile: 'cast', witch: 'cast' };
+// the supernatural tell: eye colour per model (the suit and the civilian only flash it, while the disguise holds)
+const EYE_COL = { demon: 0xff6a10, vampire: 0xff1030, witch: 0x3dff6a, reptile: 0xf3e600, beast: 0xff2a14, suit: 0xf3e600, civilian: 0xff2a14 };
+// what each type sounds like from down the block, before it's seen
+const IDLE_BARK = { purger: 'mutter', demon: 'demon', vampire: 'vampire', witch: 'witch', reptile: 'reptile', shifter: 'shifter' };
+let _idleBarkT = -9;
+const NPC_GUNS = {};
+const _eHP = new T.Vector3(), _wT = new T.Vector3(), _wD = new T.Vector3(), _pStep = new T.Vector3(), _pDir = new T.Vector3(), _pHit = new T.Vector3(), _pC = new T.Vector3();
 class Enemy {
   constructor(type, x, z, opts) {
     const d = ET[type]; this.type = type; this.id = ++enemyId; this.pos = new T.Vector3(x, 0, z); this.vel = new T.Vector3(); this.face = Math.random() * TAU;
     this.hp = d.hp; this.maxHp = d.hp; this.speed = d.speed; this.r = d.r; this.scale = 1; this.dead = false; this.deadT = 0; this.cd = rand(.5, 1.5); this.t = Math.random() * 10;
     this.st = { speed: 0, phase: Math.random() * 6, hold: 'none', t: 0, attack: 0, flinch: 0, death: 0 };
     this.atk = 0; this.mode = 'hunt'; this.dmgMul = 1; this.seen = false; this.stuckT = 0; this.lastPos = this.pos.clone(); this.sideStep = 0;
-    this.possessed = false; this.revealed = false; this.bleed = 0; this.slowT = 0;
+    this.possessed = false; this.revealed = false; this.bleed = 0; this.slowT = 0; this.waitT = -1; this.voiceT = rand(3, 12); this.eyeT = rand(2, 6); this.castT = 0; this.hH = 1.68;
     this.aware = !!(opts && opts.aware); this.supp = 0; this.role = null; if (this.aware) { this.awareT = G.t; this.lastSeen = G.t; this.lastKnown = P.pos.clone(); }
     const o = { gender: Math.random() < .5 ? 'f' : 'm', skin: pick(SKINS), hair: pick(HAIRS), hairCol: pick(HAIR_COLS.slice(0, 3)) };
     if (type === 'purger') {
@@ -196,28 +207,53 @@ class Enemy {
       Object.assign(o, { gender: 'f', skin: 0xb8c8b0, top: 0x1a0a2a, bottom: 0x1a0a2a, accent: 0xb04dff, eye: 0x3dff6a, hair: 'long', hairCol: 0x0a0a0a, cloak: cloakM, hood: cloakM });
       this.st.hold = 'cast';
     }
-    const glbId = { purger: 'purger', demon: 'demon', vampire: 'vampire', shifter: 'civilian', reptile: 'suit', witch: 'witch' }[type];
-    this.R = (CHARS_READY && makeGLBRig(glbId)) || makeRig(o); this.o = o;
-    this.R.root.scale.setScalar(this.scale);
+    this.o = o;
+    // a type whose models are still streaming in waits, unseen and untouchable, and materialises when they land
+    if (enemyPending(type)) { this.R = { root: new T.Group() }; this.R.root.visible = false; scene.add(this.R.root); this.waitT = 0; wantEnemy(type); }
+    else this.build();
+  }
+  build() {
+    const type = this.type, glb = CHARS_READY && ENEMY_NEEDS[type].every(id => CHARS[id].scene); // half a set (a failed beast) would leave a broken transform: box rig instead
+    this.R = (glb && makeGLBRig(ENEMY_GLB[type])) || makeRig(this.o);
+    this.R.root.scale.setScalar(this.scale); this.hH = this.R.glb ? charHeadY(this.R.glb) : 1.68;
     if (type === 'purger') this.attachWeapon(this.ranged ? 'gun' : 'bat');
     if (type === 'witch') this.attachWeapon('staff');
     if (type === 'reptile') { this.R.tail = null; }
     scene.add(this.R.root); this.sync();
-    if (type === 'demon') { this.glow = glowSprite(0, 1.6, 0, lc(0xff3a10), 2.2, this.R.root); this.glow.material.opacity = .5; }
+    if (type === 'demon') { this.glow = glowSprite(0, 1.6, 0, lc(0xff3a10), 2.2, this.R.root); this.glow.material.opacity = .42; }
+    this.eyesOn();
+  }
+  // glowing eyes on the scanned models; a disguise keeps them dark except for the odd flash (updateEyes)
+  eyesOn() { if (!this.R.glb) return; const c = this.possessed ? 0xff3a00 : EYE_COL[this.R.glb]; if (!c) return; const q = addEyes(this.R, c); if (q) { q.visible = this.mode !== 'disguise'; if (this.possessed) q.scale.multiplyScalar(1.25); } }
+  updateEyes(dt, d2) {
+    const q = this.R.eyeQ; if (!q || this.mode !== 'disguise') return;
+    if ((this.eyeT -= dt) > 0) return; q.visible = !q.visible && d2 < 32 * 32; this.eyeT = q.visible ? rand(.07, .14) : rand(5, 10);
+  }
+  // an idle cue by ear at a distance (the close-range alerts and pain are the ambience's autoBarks): one per enemy every
+  // 10-20 s, one across the whole street every 2 s. Marked internal so autoBarks keeps voicing the rest.
+  idleVoice(dt, d2) {
+    if ((this.voiceT -= dt) > 0) return; this.voiceT = rand(10, 20);
+    if (d2 < 16 * 16 || d2 > 72 * 72 || G.t - _idleBarkT < 2 || this.mode === 'morph' || typeof AMB === 'undefined' || !AMB.bark) return;
+    if (this.mode === 'disguise' && (this.type !== 'shifter' || Math.random() > .3)) return; // a shifter in the crowd sometimes growls when nobody's close
+    const A = AMB, pi = A._int; _idleBarkT = G.t; A._int = 1;
+    try { A.bark(this.pos, this.type === 'purger' && this.aware ? 'shout' : IDLE_BARK[this.type]); } catch (e) { } A._int = pi;
   }
   attachWeapon(k) {
     const hand = this.R.rArm.hand; const g = new T.Group();
     if (this.R.glb) { const mg = attachToBone(hand, g, 0, 0, Math.PI); if (k === 'gun') this.R.gunMount = { g: mg, mode: 'npc' }; } else hand.add(g);
     if (k === 'gun' && this.R.glb) { // a real modelled weapon from the arsenal, oriented by aimOverlay like the player's
       const id = this.gunId = pick(['preacher', 'preacher', 'vexor', 'kalash', 'patriot15', 'riot']);
-      const built = buildWeapon(W[id], defaultCfg(W[id]), true); built.g.rotation.x = -Math.PI / 2; built.g.position.set(0, -.02, .01); g.add(built.g);
-      this.R.gunMount.mode = 'tpp'; this.gun = built.g; this.heavyGun = id !== 'preacher' && id !== 'vexor';
+      // one built gun per model, cloned per purger (shared geometry and materials): a spawn no longer rebuilds a whole weapon
+      let tpl = NPC_GUNS[id]; if (!tpl && MODELS[id] && MODELS[id].scene) tpl = NPC_GUNS[id] = buildWeapon(W[id], defaultCfg(W[id]), true).g;
+      const gg = tpl ? tpl.clone() : buildWeapon(W[id], defaultCfg(W[id]), true).g; gg.rotation.x = -Math.PI / 2; gg.position.set(0, -.02, .01); g.add(gg);
+      this.R.gunMount.mode = 'tpp'; this.gun = gg; this.heavyGun = id !== 'preacher' && id !== 'vexor';
     } else if (k === 'gun') { const m = new T.Mesh(gBox(.04, .06, .22), STD(0x111114, .4, .8)); m.position.set(0, -.07, -.08); g.add(m); this.gun = m; }
     if (k === 'bat') { const m = new T.Mesh(gLimb(.022, .04, .8), Math.random() < .5 ? STD(0x5a3a1a, .6) : STD(0x9a9aa0, .3, .9)); m.rotation.x = Math.PI; m.position.set(0, -.07, 0); g.add(m); }
     if (k === 'staff') { const m = new T.Mesh(gLimb(.018, .018, 1.5), STD(0x2a1a10, .8)); m.rotation.x = Math.PI; m.position.set(0, -.6, 0); g.add(m); const orb = new T.Mesh(gSph(.07), NEON(0x3dff6a)); orb.position.set(0, .2, 0); g.add(orb); glowSprite(0, .2, 0, lc(0x3dff6a), .9, g); }
   }
   sync() { this.R.root.position.copy(this.pos); if (this.R.crouchW) this.R.root.position.y -= this.R.crouchW * .17 * this.scale; this.R.root.rotation.y = this.face; }
-  headPos() { return new T.Vector3(this.pos.x, this.pos.y + 1.68 * this.scale * (this.st.crouch ? .8 : 1), this.pos.z); }
+  // hH: the rig's head height at scale 1 (1.68 for the box rig, measured for scanned models); the root scale is what's drawn
+  headPos(out) { return (out || new T.Vector3()).set(this.pos.x, this.pos.y + this.hH * this.R.root.scale.y * (this.st.crouch ? .8 : 1), this.pos.z); }
   dist2() { const dx = P.pos.x - this.pos.x, dz = P.pos.z - this.pos.z; return dx * dx + dz * dz; }
   turnTo(x, z, dt, k) { const tgt = Math.atan2(-(x - this.pos.x), -(z - this.pos.z)); let d = tgt - this.face; d = Math.atan2(Math.sin(d), Math.cos(d)); this.face += d * Math.min(1, dt * (k || 8)); }
   moveToward(x, z, spd, dt) {
@@ -227,6 +263,7 @@ class Enemy {
     this.vel.x = damp(this.vel.x, vx, 8, dt); this.vel.z = damp(this.vel.z, vz, 8, dt);
   }
   update(dt) {
+    if (this.waitT >= 0) { this.waitT += dt; if (enemyPending(this.type) && this.waitT < 12) return; scene.remove(this.R.root); this.waitT = -1; this.build(); } // models landed (or gave up: box rig)
     this.t += dt; this.st.t = this.t;
     const d2 = this.dist2(), dist = Math.sqrt(d2);
     if (this.dead) {
@@ -256,20 +293,18 @@ class Enemy {
     this.st.aimPitch = 0;
     if (this.R.glb) {
       const ak = this.atk > 0; this.st.attackJust = ak && !this.prevAtk; this.prevAtk = ak;
-      this.st.attackClip = { purger: this.ranged ? null : 'slash', demon: 'punch', vampire: 'slash', shifter: 'punch', reptile: 'cast', witch: 'cast' }[this.type];
+      this.st.attackClip = this.type === 'purger' ? (this.ranged ? null : 'slash') : ATK_CLIP[this.type];
       this.st.aimHold = this.type === 'purger' && this.ranged && (this.burst > 0 || (this.aware && this.seesP && dist < 50) || !!this.st.aimHoldCiv); this.st.aimHoldCiv = 0;
       if (!far || Math.random() < .2) animGLB(this.R, this.st, far ? dt * 5 : dt);
     } else if (!far) animRig(this.R, this.st, dt);
     this.sync();
     if (this.type === 'demon' && Math.random() < dt * 14 && d2 < 60 * 60) FXA.emit(this.pos.x + rand(-.4, .4), rand(.4, 2), this.pos.z + rand(-.4, .4), rand(-.3, .3), rand(.6, 1.6), rand(-.3, .3), rand(.6, 1.2), .1, .02, COL.ember, 1, 0, 0);
     if (this.possessed && Math.random() < dt * 10) FXA.emit(this.pos.x, rand(1, 2), this.pos.z, rand(-.3, .3), rand(.5, 1.2), rand(-.3, .3), .7, .14, .02, COL.ember, 1);
+    if (this.castT > 0 && (this.castT -= dt) <= 0 && !(this.vanish > 0)) hexOrb(this); // the orb leaves the staff mid-cast (game time: pause and photo mode hold it). vanish sits just below 0 after a blink, so !vanish never fired again
+    this.updateEyes(dt, d2); this.idleVoice(dt, d2);
   }
   ai(dt, dist) {
-    const px = P.pos.x, pz = P.pos.z; const D = this;
-    const melee = (range, dmg, dur, cd) => {
-      if (dist < range && this.cd <= 0 && this.atk <= 0) { this.atk = this.atkDur = dur; this.cd = cd; this.hitPending = { t: dur * .5, dmg, range }; if (this.type === 'purger') AU.swish(); }
-      if (this.hitPending) { this.hitPending.t -= dt; if (this.hitPending.t <= 0) { if (Math.sqrt(this.dist2()) < this.hitPending.range + .4 && !P.inCar) damagePlayer(this.hitPending.dmg * this.dmgMul, this.pos, this); this.hitPending = null; } }
-    };
+    const px = P.pos.x, pz = P.pos.z;
     this.cd -= dt; this._dt = dt;
     if (P.dead) { this.moveToward(this.pos.x + Math.sin(this.t) * 3, this.pos.z + Math.cos(this.t) * 3, 1, dt); return; }
     if (this.type === 'purger') { purgerAI(this, dt, dist); return; }
@@ -290,14 +325,14 @@ class Enemy {
           if (this.burst > 0) { this.bT -= dt; if (this.bT <= 0) { this.burst--; this.bT = .13; enemyFire(this, 7 * this.dmgMul, dist, false); } }
         } else {
           this.moveToward(px, pz, dist < 2 ? 0 : spd, dt); this.turnTo(px, pz, dt);
-          melee(1.9, 14, .55, 1.0);
+          this.melee(1.9, 14, .55, 1.0, dist);
         }
         break;
       }
       case 'demon': {
         if (!this.leapT && dist < 9 && dist > 3.5 && this.cd <= 0) { this.leapT = .7; this.cd = 3; this.vel.set((px - this.pos.x) / dist * 13, 0, (pz - this.pos.z) / dist * 13); AU.roar(spatial(this.pos).pan, spatial(this.pos).vol); }
         if (this.leapT > 0) { this.leapT -= dt; this.pos.y = Math.sin((1 - this.leapT / .7) * Math.PI) * 2.2; if (this.leapT <= 0) { this.leapT = 0; this.pos.y = 0; burst(FXN, this.pos.clone().setY(.2), 14, 4, .8, .5, 1.2, COL.smoke, 0, .3, .5, 2); if (dist < 3) damagePlayer(30, this.pos, this); } }
-        else { this.pos.y = 0; this.moveToward(px, pz, dist < 1.6 ? 0 : this.speed, dt); melee(2.2, 24, .6, 1.1); }
+        else { this.pos.y = 0; this.moveToward(px, pz, dist < 1.6 ? 0 : this.speed, dt); this.melee(2.2, 24, .6, 1.1, dist); }
         this.turnTo(px, pz, dt, 10);
         if (Math.random() < dt * .15) AU.growl(spatial(this.pos).pan, spatial(this.pos).vol);
         break;
@@ -331,7 +366,7 @@ class Enemy {
           if (Math.random() < .5) FXN.emit(this.pos.x + rand(-.5, .5), rand(.5, 2.2), this.pos.z + rand(-.5, .5), rand(-1, 1), rand(0, 2), rand(-1, 1), .6, .2, .5, COL.ichor, .8);
           if (k >= 1) { this.mode = 'hunt'; this.st.hold = 'claw'; this.speed = 6.8; }
           this.turnTo(px, pz, dt, 6);
-        } else { this.moveToward(px, pz, dist < 2 ? 0 : this.speed, dt); this.turnTo(px, pz, dt, 9); melee(2.6, 30, .6, 1.2); }
+        } else { this.moveToward(px, pz, dist < 2 ? 0 : this.speed, dt); this.turnTo(px, pz, dt, 9); this.melee(2.6, 30, .6, 1.2, dist); }
         break;
       }
       case 'reptile': {
@@ -342,7 +377,7 @@ class Enemy {
           else { const s = Math.sin(this.t * .5 + this.id) > 0 ? 1 : -1; this.vel.x = damp(this.vel.x, -(pz - this.pos.z) / dist * 3 * s, 4, dt); this.vel.z = damp(this.vel.z, (px - this.pos.x) / dist * 3 * s, 4, dt); }
           this.turnTo(px, pz, dt, 9);
           if (dist < 26 && this.cd <= 0) { this.cd = rand(1.8, 2.6); spit(this); this.atk = this.atkDur = .4; }
-          melee(2.2, 16, .5, 1.2);
+          this.melee(2.2, 16, .5, 1.2, dist);
         }
         break;
       }
@@ -353,7 +388,7 @@ class Enemy {
         else { this.vel.x = damp(this.vel.x, 0, 2, dt); this.vel.z = damp(this.vel.z, 0, 2, dt); }
         this.turnTo(px, pz, dt, 6);
         if ((dist < 6 || Math.random() < dt * .08) && this.cd > -5) { this.blink(); }
-        if (dist < 35 && this.cd <= 0) { this.cd = rand(2, 2.8); this.atk = this.atkDur = .6; setTimeout(() => { if (!this.dead && !this.vanish) hexOrb(this); }, 300); }
+        if (dist < 35 && this.cd <= 0) { this.cd = rand(2, 2.8); this.atk = this.atkDur = .6; this.castT = .3; }
         if (Math.random() < dt * 6) FXA.emit(this.pos.x, this.pos.y + .2, this.pos.z, rand(-.3, .3), -.2, rand(-.3, .3), .8, .18, .02, COL.purple, .8);
         break;
       }
@@ -366,7 +401,7 @@ class Enemy {
   blink() { this.vanish = .9; this.R.root.visible = false; burst(FXA, this.pos.clone().setY(this.pos.y + 1.2), 30, 5, .8, .3, .05, COL.purple, 0, .2, 1, 1); this.cd = Math.max(this.cd, .8); }
   swapRig(id) {
     const nr = CHARS_READY && makeGLBRig(id); if (!nr) return false;
-    scene.remove(this.R.root); this.R = nr; nr.root.scale.setScalar(this.scale); scene.add(nr.root); this.sync();
+    scene.remove(this.R.root); this.R = nr; nr.root.scale.setScalar(this.scale); scene.add(nr.root); this.sync(); this.eyesOn(); this.hH = charHeadY(id);
     burst(FXN, this.pos.clone().setY(1.2), 46, 4, 1.1, .35, 1.2, COL.smoke, -.3, .4, .8, 1.5); burst(FXN, this.pos.clone().setY(1.2), 24, 5, .7, .12, .05, COL.blood, 9);
     return true;
   }
@@ -383,24 +418,25 @@ class Enemy {
     this.st.hold = 'claw'; AU.hiss(spatial(this.pos).pan, 1); flashBanner('REPTILIAN', 'The suit was a skin', 1.6);
   }
   possess() {
+    if (this.waitT >= 0 || this.dead) return;
     this.possessed = true; this.hp = this.maxHp = this.maxHp * 2.3; this.dmgMul = 1.8; this.scale = 1.12; this.R.root.scale.setScalar(1.12);
-    if (this.R.glb) tintGLB(this.R, 0xff2a00, .55);
-    this.R.eyeM.color.set(0xff3a00); this.R.mats.top.emissive = lc(0x5a0a00); this.R.mats.top.emissiveIntensity = .6; this.R.mats.skin.color.copy(lc(0x6a2020));
-    this.glow = glowSprite(0, 1.5, 0, lc(0xff2a00), 2, this.R.root); this.glow.material.opacity = .45;
+    // the tell is in the eyes and the ember aura, not a lit-up body: emissive on the eyes only
+    if (this.R.glb) this.eyesOn(); else { this.R.eyeM.color.set(0xff3a00); this.R.mats.top.emissive = lc(0x5a0a00); this.R.mats.top.emissiveIntensity = .6; this.R.mats.skin.color.copy(lc(0x6a2020)); }
+    this.glow = glowSprite(0, 1.5, 0, lc(0xff2a00), 2, this.R.root); this.glow.material.opacity = .38;
     burst(FXA, this.pos.clone().setY(1.4), 40, 5, .9, .25, .02, COL.ember, 0, .3, 1, 1); AU.growl(spatial(this.pos).pan, 1);
   }
   partAt(o, d) {
     // returns {t, part} for a ray, or null
     if (this.dead || (this.R && !this.R.root.visible)) return null;
-    const sc = this.scale, hy = this.pos.y; const hp = this.headPos();
-    const th = raySphere(o, d, hp, .17 * sc);
-    const tb = rayVCapsule(o, d, this.pos.x, this.pos.z, hy + .35 * sc, hy + 1.38 * sc, (this.type === 'witch' ? .45 : .3) * sc);
+    const sc = this.scale, hy = this.pos.y, hk = this.hH / 1.68 * this.R.root.scale.y; const hp = this.headPos(_eHP); // every ray tests every enemy: no allocation
+    const th = raySphere(o, d, hp, .17 * hk);
+    const tb = rayVCapsule(o, d, this.pos.x, this.pos.z, hy + .35 * hk, hy + 1.38 * hk, (this.type === 'witch' ? .45 : .3) * sc);
     if (th > 0 && (tb < 0 || th <= tb + .2)) return { t: th, part: 'head' };
-    if (tb > 0) { const y = o.y + d.y * tb - hy; return { t: tb, part: y < .8 * sc ? 'limb' : 'body' }; }
+    if (tb > 0) { const y = o.y + d.y * tb - hy; return { t: tb, part: y < .8 * hk ? 'limb' : 'body' }; }
     return null;
   }
   hurt(amount, part, dir, src) {
-    if (this.dead) return false;
+    if (this.dead || this.waitT >= 0) return false; // not materialised yet
     if (this.mode === 'disguise' && src !== true) { if (this.type === 'shifter') this.transform(); else this.reveal(); }
     this.hp -= amount; if (src !== true) this.st.flinch = Math.min(1, this.st.flinch + .5);
     if (src && src !== true && src !== 'car' && !this.aware) alertEnemy(this, P.pos, 2.5); if (src && src.w) this.supp = Math.min(1, (this.supp || 0) + .35);
@@ -439,9 +475,9 @@ function updateWisps(dt) {
     const w = WISPS[i]; w.t += dt; w.life -= dt;
     // prefer a living purger to ride; else the player
     let tgt = null, best = 30 * 30;
-    if (w.t > 1.2) for (const e of ENEMIES) { if (e.dead || e.type !== 'purger' || e.possessed) continue; const d = e.pos.distanceToSquared(w.pos); if (d < best) { best = d; tgt = e; } }
-    const tp = tgt ? tgt.pos.clone().setY(1.4) : P.eye();
-    const dir = tp.clone().sub(w.pos); const L = dir.length();
+    if (w.t > 1.2) for (const e of ENEMIES) { if (e.dead || e.type !== 'purger' || e.possessed || e.waitT >= 0) continue; const d = e.pos.distanceToSquared(w.pos); if (d < best) { best = d; tgt = e; } }
+    const tp = tgt ? _wT.copy(tgt.pos).setY(1.4) : _wT.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z);
+    const dir = _wD.copy(tp).sub(w.pos); const L = dir.length();
     const spd = w.t < 1.2 ? 1 : 7.5;
     w.pos.addScaledVector(dir.normalize(), spd * dt); w.pos.y += Math.sin(w.t * 6) * .01;
     w.g.lookAt(tp);
@@ -465,13 +501,16 @@ function enemyShoot(e, dmg, dist) {
   const s = spatial(e.pos); AU.nz(.14, 'lowpass', 3000, 400, .9, .45 * s.vol + .05, s.pan);
   if (hit) damagePlayer(dmg, e.pos, e); else if (dist < 15 && Math.random() < .5) AU.ping(s.pan);
 }
+// projectile meshes are pooled per type (each used to bring a fresh sprite material: a witch fight churned dozens)
+const PPOOL = {};
 function makeProj(type, pos, vel, owner, dmg, opts) {
-  let obj;
-  if (type === 'star') { obj = new T.Mesh(P.starGeo || gBox(.1, .01, .1), STD(0xf0f2f8, .05, 1)); obj.scale.setScalar(1.6); }
-  else { const col = type === 'hex' ? 0xb04dff : type === 'acid' ? 0x3dff6a : type === 'plasma' ? 0x5dff7a : 0xffffff; obj = new T.Group(); obj.add(new T.Mesh(gSph(type === 'plasma' ? .09 : .14), NEON(col))); const gs = glowSprite(0, 0, 0, lc(col), type === 'plasma' ? 1.2 : 1.6, obj); }
-  obj.position.copy(pos); scene.add(obj);
+  let obj = PPOOL[type] && PPOOL[type].pop();
+  if (!obj && type === 'star') { obj = new T.Mesh(P.starGeo || gBox(.1, .01, .1), STD(0xf0f2f8, .05, 1)); obj.scale.setScalar(1.6); }
+  else if (!obj) { const col = type === 'hex' ? 0xb04dff : type === 'acid' ? 0x3dff6a : type === 'plasma' ? 0x5dff7a : 0xffffff; obj = new T.Group(); obj.add(new T.Mesh(gSph(type === 'plasma' ? .09 : .14), NEON(col))); glowSprite(0, 0, 0, lc(col), type === 'plasma' ? 1.2 : 1.6, obj); }
+  obj.position.copy(pos); obj.rotation.set(0, 0, 0); scene.add(obj);
   const p = Object.assign({ type, pos: obj.position, vel, owner, dmg, obj, life: 4, g: type === 'acid' ? 9 : 0 }, opts || {}); PROJ.push(p); return p;
 }
+function freeProj(p) { scene.remove(p.obj); (PPOOL[p.type] || (PPOOL[p.type] = [])).push(p.obj); }
 function spit(e) {
   const from = e.headPos().addScaledVector(new T.Vector3(-Math.sin(e.face), 0, -Math.cos(e.face)), .3);
   const tgt = P.eye().addScaledVector(P.vel, .5); const d = tgt.clone().sub(from); const L = d.length(); const t = L / 18;
@@ -485,46 +524,46 @@ function hexOrb(e) {
 function updateProj(dt) {
   for (let i = PROJ.length - 1; i >= 0; i--) {
     const p = PROJ[i]; p.life -= dt; let dead = p.life <= 0;
-    if (p.homing && !P.dead) { const want = P.eye().sub(p.pos).normalize().multiplyScalar(p.vel.length()); p.vel.lerp(want, Math.min(1, p.homing * dt)); }
+    if (p.homing && !P.dead) { const want = _pC.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z).sub(p.pos).normalize().multiplyScalar(p.vel.length()); p.vel.lerp(want, Math.min(1, p.homing * dt)); }
     p.vel.y -= p.g * dt;
-    const step = p.vel.clone().multiplyScalar(dt); const L = step.length(); const dir = step.clone().divideScalar(L || 1);
+    const step = _pStep.copy(p.vel).multiplyScalar(dt); const L = step.length(); const dir = _pDir.copy(step).divideScalar(L || 1);
     const wh = rayBoxes(p.pos, dir, L);
     if (p.owner === 'player') {
       let best = null, bt = L;
       for (const e of ENEMIES) { const h = e.partAt(p.pos, dir); if (h && h.t < bt) { bt = h.t; best = { e, part: h.part }; } }
       for (const w of WISPS) { const t = raySphere(p.pos, dir, w.pos, .5); if (t > 0 && t < bt) { bt = t; best = { w }; } }
       if (best && (!wh || bt < wh.t)) {
-        const hp = p.pos.clone().addScaledVector(dir, bt);
+        const hp = _pHit.copy(p.pos).addScaledVector(dir, bt);
         if (best.w) { best.w.hp -= p.dmg; hitMarker(best.w.hp <= 0); }
         else { const mult = best.part === 'head' ? p.head : best.part === 'limb' ? .85 : 1; const k = best.e.hurt(p.dmg * mult, best.part, dir, { w: p.w, big: p.type === 'plasma' }); hitMarker(k, best.part === 'head'); burst(FXN, hp, 6, 2, .4, .08, .05, COL.blood, 6); }
         if (p.type === 'plasma') splash(hp, p); dead = true;
         if (p.type === 'star') AU.thud();
       } else if (wh) {
-        const hp = p.pos.clone().addScaledVector(dir, wh.t);
+        const hp = _pHit.copy(p.pos).addScaledVector(dir, wh.t);
         if (p.type === 'plasma') splash(hp, p); else { burst(FXA, hp, 8, 3, .3, .08, .02, COL.spark, 8); AU.ping(spatial(hp).pan); }
         dead = true;
       }
     } else {
-      const c = P.pos.clone().setY(P.pos.y + 1.0); const tt = raySphere(p.pos, dir, c, .65);
+      const c = _pC.set(P.pos.x, P.pos.y + 1.0, P.pos.z); const tt = raySphere(p.pos, dir, c, .65);
       if (tt > 0 && tt <= L && !P.dead) {
         damagePlayer(p.dmg, p.pos, null);
         if (p.type === 'hex') { P.hexT = 3; flashBanner('HEXED', 'Movement slowed', .9); }
         if (p.type === 'acid') { P.acidT = 1.2; }
         burst(FXA, p.pos, 14, 3, .5, .15, .02, p.type === 'hex' ? COL.purple : COL.green, 0); dead = true;
-      } else if (wh) { burst(FXA, p.pos.clone().addScaledVector(dir, wh.t), 12, 3, .5, .2, .02, p.type === 'hex' ? COL.purple : COL.green, 3); dead = true; }
+      } else if (wh) { burst(FXA, _pHit.copy(p.pos).addScaledVector(dir, wh.t), 12, 3, .5, .2, .02, p.type === 'hex' ? COL.purple : COL.green, 3); dead = true; }
     }
     p.pos.add(step);
     if (p.type === 'star') { p.obj.rotation.x = -Math.PI / 2; p.obj.rotation.z += dt * 30; }
     if (p.type === 'hex' && Math.random() < .6) FXA.emit(p.pos.x, p.pos.y, p.pos.z, rand(-.2, .2), rand(-.2, .2), rand(-.2, .2), .4, .2, .02, COL.purple, .9);
     if (p.type === 'acid' && Math.random() < .5) FXN.emit(p.pos.x, p.pos.y, p.pos.z, 0, -.5, 0, .4, .1, .05, COL.green, .8, 4);
     if (p.type === 'plasma' && Math.random() < .8) FXA.emit(p.pos.x, p.pos.y, p.pos.z, rand(-.3, .3), rand(-.3, .3), rand(-.3, .3), .3, .25, .02, COL.plasma, .9);
-    if (dead) { scene.remove(p.obj); PROJ.splice(i, 1); }
+    if (dead) { freeProj(p); PROJ.splice(i, 1); }
   }
 }
 function splash(at, p) {
   burst(FXA, at, 40, 7, .6, .3, .02, COL.plasma, 0, .3, 1, 1); AU.boom(spatial(at).pan);
   flashLight.position.copy(at); flashLight.color.set(0x5dff7a); flashLight.intensity = 6; G.flashT = .12;
-  for (const e of ENEMIES) { if (e.dead) continue; const d = e.pos.clone().setY(1).distanceTo(at); if (d < p.splash) { const k = e.hurt(45 * (1 - d / p.splash) + 10, 'body', null, { w: p.w }); if (k) hitMarker(true); } }
+  for (const e of ENEMIES) { if (e.dead) continue; const d = Math.hypot(e.pos.x - at.x, 1 - at.y, e.pos.z - at.z); if (d < p.splash) { const k = e.hurt(45 * (1 - d / p.splash) + 10, 'body', null, { w: p.w }); if (k) hitMarker(true); } }
   const pd = P.eye().distanceTo(at); if (pd < 2.5) damagePlayer(12, at, null);
 }
 
@@ -541,15 +580,18 @@ function spawnTable(d, hour) {
 }
 function updateSpawns(dt) {
   if (P.dead || G.state !== 'city' || G.inside) return;
-  const hour = G.hour; const maxE = (G.quality === 'high' ? 14 : 9) + Math.floor(hour * (G.quality === 'high' ? .7 : .45));
+  // a hot night (the AI's HEAT, 0..5) brings them faster and a few more at once: up to 1.75x the rate, +2 (low) / +4 (high) bodies
+  const hour = G.hour, heat = typeof HEAT !== 'undefined' ? clamp(HEAT.level || 0, 0, 5) : 0, hi = G.quality === 'high';
+  const maxE = (hi ? 14 : 9) + Math.floor(hour * (hi ? .7 : .45)) + Math.floor(heat * (hi ? .8 : .45));
   SPAWN.t -= dt; if (SPAWN.t > 0) return;
-  SPAWN.t = Math.max(1.1, 4.2 - hour * .28) * rand(.7, 1.2);
-  const alive = ENEMIES.filter(e => !e.dead).length; if (alive >= maxE) return;
+  SPAWN.t = Math.max(1.1, 4.2 - hour * .28) * rand(.7, 1.2) / (1 + heat * .15);
+  let alive = 0; for (const e of ENEMIES) if (!e.dead) alive++; if (alive >= maxE) return;
   const n = SPAWN.first ? 4 : (Math.random() < .25 + hour * .03 ? rint(2, 3) : 1); SPAWN.first = false;
   for (let k = 0; k < n; k++) {
     const pt = spawnPoint(); if (!pt) continue;
-    const tab = spawnTable(districtAt(pt.x, pt.z), hour); let sum = 0; for (const t in tab) sum += tab[t];
-    let r = Math.random() * sum, type = 'purger'; for (const t in tab) { r -= tab[t]; if (r <= 0) { type = t; break; } }
+    // a type whose models haven't streamed in yet is skipped this time (and fetched now); purgers are always there
+    const tab = spawnTable(districtAt(pt.x, pt.z), hour); let sum = 0; for (const t in tab) { if (enemyPending(t)) { wantEnemy(t); tab[t] = 0; } sum += tab[t]; }
+    let r = Math.random() * sum, type = 'purger'; for (const t in tab) { r -= tab[t]; if (r <= 0 && tab[t] > 0) { type = t; break; } }
     if (type === 'witch' && districtAt(pt.x, pt.z) === 3 && Math.random() < .6) { const wc = pick(WITCH_CIRCLES); if (wc.distanceTo(P.pos) > 18 && wc.distanceTo(P.pos) < 70) pt.copy(wc); }
     ENEMIES.push(new Enemy(type, pt.x, pt.z, { aware: Math.random() < .3 + hour * .04 }));
   }
