@@ -114,7 +114,7 @@ function onKill(e, part, src) {
   if (src && src.w && src.w.kind === 'melee') { n += 50; tags.push('MELEE'); }
   if (src === 'car') tags.push('ROADKILL'); if (src && src.blast) tags.push('EXPLOSION');
   if (src && src.dist > 60) { n += 100; tags.push(Math.round(src.dist) + 'M'); }
-  addScore(n, (e.possessed ? 'Possessed ' : '') + ET[e.type].name.toUpperCase() + (tags.length ? ' · ' + tags.join(' · ') : ''));
+  addScore(n, (e.possessed ? 'Possessed ' : '') + npcName(e).toUpperCase() + (tags.length ? ' · ' + tags.join(' · ') : ''));
   setTxt('kills', P.kills + ' KILLS');
   if (Math.random() < .38) dropPickup(e.pos);
 }
@@ -138,7 +138,7 @@ function updatePicks(dt) {
 function damagePlayer(dmg, from, e) {
   if (P.dead || G.state !== 'city') return;
   P.hp -= dmg; P.regenT = 4; G.dmgFlash = .6; shake(Math.min(.5, dmg / 40)); AU.hurt(); damageDir(from);
-  if (P.hp <= 0) killPlayer(e ? ET[e.type].name : 'the night');
+  if (P.hp <= 0) killPlayer(e && e.type ? npcName(e) : 'the night');
 }
 function startPossession() {
   if (P.possT > 0 || P.dead) return;
@@ -212,6 +212,10 @@ function updateWeather(dt) {
 }
 
 /* ---------- the clock ---------- */
+// the hour banners: the purge as people make it; the supernatural lines only when the setting lets them in
+const HOUR_BANNERS = ['', 'The crews are out. Same blocks, same night', 'Looters are working the shopfronts', 'Block Watch has the porches. Give them room', 'An hour to midnight. The grid is failing', 'Midnight. The Council sweep teams are out', 'Half the city is burning', 'The power is coming back. So are the crews', 'The sweepers are clearing whole blocks', 'Hold on', 'Two hours left', 'Last hour. Run if you have to'];
+const HOUR_BANNERS_SN = { classic: { 1: 'The demons are awake', 2: 'Reptilians are dropping the disguise', 3: 'The witches are out in Salem', 6: 'Something is wearing faces', 7: 'The blood moon is at its peak', 8: 'They can smell dawn coming' }, rare: { 3: 'Not everything out there is a person', 7: 'The blood moon is at its peak' } };
+const hourLine = h => (HOUR_BANNERS_SN[G.supernatural] || {})[h] || HOUR_BANNERS[h] || '';
 function updateClock(dt) {
   if (!G.started || P.dead) return;
   G.nightT += dt; const total = G.nightMin * 60; G.hour = G.nightT / total * 12;
@@ -220,7 +224,7 @@ function updateClock(dt) {
   const h = Math.floor(G.hour);
   if (h !== G.lastHour) {
     G.lastHour = h; const hh = (19 + h) % 24; G.holoDraw(String(hh).padStart(2, '0') + ':00', h < 11 ? (12 - h) + ' HOURS LEFT' : 'ALMOST DAWN');
-    if (h > 0 && h < 12) { const msgs = ['', 'The demons are awake', 'Reptilians are dropping the disguise', 'The witches are out in Salem', 'An hour to midnight. The grid is failing', 'Midnight. Half the city is burning', 'Something is wearing faces', 'The blood moon is at its peak', 'They can smell dawn coming', 'Hold on', 'Two hours left', 'Last hour. Run if you have to']; flashBanner(fmtClock(h), msgs[h] || '', 2.4); AU.siren(4); }
+    if (h > 0 && h < 12) { flashBanner(fmtClock(h), hourLine(h), 2.4); AU.siren(4); }
     setTxt('clockSub', h < 11 ? 'Survive until 7:00 AM' : 'Sunrise is close');
     if (h === 4 && GRID.d < 0) gridFail(h); else if (h === 7) gridRestore();
     storyHour(h);
@@ -293,12 +297,14 @@ function loop(now) {
     P.suppressed = Math.max(0, (P.suppressed || 0) - dt * .7);
     hudUpdate(dt);
   } else if (st === 'photo') {
+    if (G.lastSt !== 'photo') { for (const e of ENEMIES) if (e.R.pivot) e.R.pivot.visible = true; for (const c of CIVS) if (c.R.pivot) c.R.pivot.visible = true; } // the free camera can turn onto bodies the street camera had hidden
     if (typeof updatePhoto === 'function') updatePhoto(dt);
   } else if (st === 'smith' || st === 'paused' || st === 'pauseload') {
     if (G.pausedFrom === 'city' || G.prevState === 'city') { /* frozen world */ }
   } else if (st === 'end') {
     if (P.dead) { P.deadT += dt; updateCamera(dt); updateBody(dt); }
   }
+  G.lastSt = st;
   for (const f of UPD) f(dt, G.t);
   if (typeof updateAmbience === 'function') updateAmbience(dt, st);
   if (typeof updateDigital === 'function') updateDigital(dt, st);

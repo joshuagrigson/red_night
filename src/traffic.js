@@ -2,7 +2,8 @@
    RED NIGHT — traffic: a pool of AI cars that drive the street grid in the
    right-hand lane, turn at intersections, brake for people and cars, and
    get recycled around the player. Any of them can be carjacked (the driver
-   bails and runs). When the night runs hot, purger crews drive in.
+   bails and runs). When the night runs hot, purger crews drive in; after
+   midnight the Council's sweep vans do, and street crews roll up in numbers.
    ===================================================================== */
 const TRAFFIC = [], TRAFFIC_ALL = [];
 const LANE = 1.45;
@@ -123,28 +124,33 @@ function carjackBail(c) {
 }
 function trafficNightReset() { for (const c of TRAFFIC_ALL) if (!c.ai && P.inCar !== c) trafficAdopt(c); for (const c of TRAFFIC_ALL) c.jackT = 0; gangReset(); }
 
-/* ---------- gang arrivals: at HEAT 2+ a purger crew speeds in through traffic, brakes hard short of you and spills out ---------- */
-const GANG = { cars: [], t: 18, sq: 100 };
+/* ---------- arrivals: at HEAT 2+ a purger crew speeds in through traffic, brakes hard short of you and spills out. After
+   midnight a sweep van does the same whatever the heat, and the director can call a van or a crew car in ---------- */
+const GANG = { cars: [], t: 18, sq: 100, req: null };
+// the director asks for a van (kind: 'sweeper' | 'crew' | 'purger'); false if none is free
+function gangCall(kind) { if (!G.started || G.inside || P.dead) return false; for (const o of GANG.cars) if (o.gang.st !== 'idle' && o.gang.st !== 'parked') return false; GANG.req = kind; GANG.t = 0; return true; }
 function gangInit() { for (let k = 0; k < (G.quality === 'high' ? 2 : 1); k++) gangNew(); }
 function gangNew() {
   const c = new Car(0, -2600 - GANG.cars.length * 12, 0, pick([0x0b0b0e, 0x1a0608, 0x0c1014]), pick([0xff1f3d, 0xff2a6d, 0xb04dff]));
   c.gang = { st: 'idle', t: 0, stopD: 30, crew: 3, k: 0, uT: 0, sq: 0, ix: GANG.cars.length }; c.gone = true; c.g.visible = false; CARS.push(c); GANG.cars.push(c); return c;
 }
 function gangHide(c) { const S = c.gang; S.st = 'idle'; c.ai = null; c.aiInp = null; c.gone = true; c.g.visible = false; c.speed = 0; c.pos.set(0, 0, -2600 - S.ix * 12); if (c.dm && !c.dead) { c.dm.hp = c.dm.max; if (c.hoodFire) { const k = FIRES.indexOf(c.hoodFire); if (k >= 0) FIRES.splice(k, 1); c.hoodFire = null; } } c.sync(); }
-function gangReset() { for (const c of GANG.cars) gangHide(c); GANG.t = rand(15, 25); }
+function gangReset() { for (const c of GANG.cars) gangHide(c); GANG.t = rand(15, 25); GANG.req = null; }
 function gangTick(step) {
-  if (trafficHeat() < 2 || !G.started || G.inside || P.dead) return;
+  const heat = trafficHeat(), late = (G.hour || 0) >= 5;
+  if ((heat < 2 && !late && !GANG.req) || !G.started || G.inside || P.dead) return;
   if ((GANG.t -= step) > 0) return;
-  let busy = 0, alive = 0, c = null;
+  let busy = 0, c = null;
   for (const o of GANG.cars) { const s = o.gang.st; if (s === 'drive' || s === 'brake' || s === 'unload') busy++; else if (s === 'idle' && !o.dead && !c) c = o; }
-  for (const e of ENEMIES) if (!e.dead) alive++;
-  if (busy >= (G.quality === 'high' ? 2 : 1) || alive > 16) { GANG.t = 4; return; }
+  const room = (typeof fightCap === 'function' ? fightCap() : 16) - (typeof fightersAlive === 'function' ? fightersAlive() : 0);
+  if (busy >= (G.quality === 'high' ? 2 : 1) || room < 2) { GANG.t = 4; return; }
   if (!c && GANG.cars.length < 3) c = gangNew();
-  if (!c || !gangPlace(c)) { GANG.t = 3; return; }
-  GANG.t = rand(45, 80) / (1 + (trafficHeat() - 2) * .4);
+  const kind = GANG.req || (heat >= 2 && (!late || Math.random() < .5) ? 'purger' : late ? 'sweeper' : 'crew'); GANG.req = null;
+  if (!c || !gangPlace(c, kind, room)) { GANG.t = 3; return; }
+  GANG.t = rand(45, 80) / (1 + Math.max(0, heat - 2) * .4) * (heat < 2 ? 1.6 : 1);
 }
 // a lane 75-120 m out, pointed at you, out of sight unless it's far
-function gangPlace(c) {
+function gangPlace(c, kind, room) {
   for (let tries = 0; tries < 40; tries++) {
     const alongX = Math.random() < .5, line = ROADS[1 + Math.floor(Math.random() * (ROADS.length - 2))];
     const t = roadNear(rand(-HALF + 20, HALF - 20)) + CW / 2 + rand(-8, 8), px = alongX ? t : line, pz = alongX ? line : t;
@@ -154,7 +160,8 @@ function gangPlace(c) {
     let clear = true; for (const o of CARS) if (o !== c && !o.gone && (o.pos.x - x) ** 2 + (o.pos.z - z) ** 2 < 100) { clear = false; break; } if (!clear) continue;
     c.pos.set(x, 0, z); c.h = Math.atan2(-fx, -fz); c.speed = 12; c.gone = false; c.g.visible = true; c.g.position.y = 0;
     const A = c.ai = trafficState(17); A.f.set(fx, 0, fz); A.gang = true;
-    const S = c.gang; S.st = 'drive'; S.t = 0; S.stopD = rand(25, 40); S.crew = trafficHeat() >= 4 ? rint(3, 4) : rint(2, 4); S.k = 0; S.uT = 0; S.sq = ++GANG.sq;
+    const S = c.gang; S.st = 'drive'; S.t = 0; S.stopD = rand(25, 40); S.crew = Math.min(room || 4, trafficHeat() >= 4 || kind === 'sweeper' ? rint(3, 4) : rint(2, 4)); S.k = 0; S.uT = 0; S.sq = ++GANG.sq;
+    S.kind = kind || 'purger'; S.fac = S.kind === 'crew' ? pick(['eastline', 'rails']) : S.kind;
     c.sync(); return true;
   }
   return false;
@@ -181,14 +188,15 @@ function gangDrive(dt) {
     } else if (S.st === 'parked' && d > 150 && !trafficInView(c.pos.x, c.pos.z)) gangHide(c);
   }
 }
-// one purger out of a door, aware, registered with the crew's squad; never materialises in view inside 20 m
+// one out of a door, aware, registered with the car's squad; never materialises in view inside 20 m. Purgers and sweepers
+// come for you (you're armed); a street crew rolls up to see what the shooting is
 function gangDismount(c, force) {
   const S = c.gang, k = S.k, fx = -Math.sin(c.h), fz = -Math.cos(c.h), side = k % 2 ? 1 : -1;
   const p = _tvF.set(c.pos.x - fz * side * 1.7 + fx * (k < 2 ? .5 : -.9), 0, c.pos.z + fx * side * 1.7 + fz * (k < 2 ? .5 : -.9)); collideCircle(p, .45, 0, 1.8);
   const d = Math.hypot(p.x - P.pos.x, p.z - P.pos.z); if (!force && d < 20 && trafficInView(p.x, p.z)) return false;
-  const e = new Enemy('purger', p.x, p.z, { aware: true, ranged: .8 });
-  e.sq = S.sq; e.lastKnown.set(P.pos.x + rand(-3, 3), 0, P.pos.z + rand(-3, 3)); e.face = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.reactT = rand(.6, 1.1); e.frags = Math.random() < .5 ? rint(1, 2) : 0;
+  const kind = S.kind || 'purger', e = new Enemy(kind === 'crew' ? 'crew' : kind, p.x, p.z, { aware: true, ranged: kind === 'purger' ? .8 : undefined, fac: S.fac, sq: S.sq });
+  e.sq = S.sq; e.lastKnown.set(P.pos.x + rand(-3, 3), 0, P.pos.z + rand(-3, 3)); e.face = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.reactT = rand(.6, 1.1); if (kind !== 'crew') e.frags = Math.random() < .5 ? rint(1, 2) : 0;
   ENEMIES.push(e); const sp = spatial(e.pos); AU.nz(.12, 'lowpass', 900, 160, 1, .45 * sp.vol, sp.pan); // door slam
-  if (k === 0 && typeof feed === 'function') feed('<b>PURGER CREW</b> · Pulling up on you');
+  if (k === 0 && typeof feed === 'function') feed(kind === 'sweeper' ? '<b>COUNCIL SWEEPERS</b> · A van just stopped' : kind === 'crew' ? `<b>${FACTIONS[S.fac].name.toUpperCase()}</b> · Rolling up` : '<b>PURGER CREW</b> · Pulling up on you');
   return true;
 }

@@ -1,8 +1,11 @@
 /* =====================================================================
-   RED NIGHT — AI: perception (sight cone + hearing), tactical purgers
-   (cover, peeking, suppression, flanking squads, retreat, molotovs, frags),
-   HEAT, monsters that stalk civilians until they notice you, and civilians,
-   who run for a doorway or drop behind a parked car when it starts.
+   RED NIGHT — AI: perception (sight cone + hearing), factions that fight
+   each other as well as you (targets, grudges, Block Watch porches, looters,
+   crews, sweep teams), the purgers' tactics on whoever they're after (cover,
+   peeking, suppression, flanking squads, retreat, molotovs, frags), fights
+   nobody can see resolved on paper, HEAT, monsters that stalk civilians until
+   they notice you, and civilians, who run for a doorway or drop behind a
+   parked car when it starts.
    ===================================================================== */
 const _av1 = new T.Vector3(), _av2 = new T.Vector3(), _av3 = new T.Vector3(), _av4 = new T.Vector3(), _av5 = new T.Vector3(), _avUp = new T.Vector3(0, 1, 0);
 
@@ -42,6 +45,85 @@ function aiLos(a, b, noCars) {
   return true;
 }
 
+/* ---------- targets: a fighter can be after the player (PLY), another fighter or a civilian ---------- */
+const PLY = { isP: 1, fac: 'player', get pos() { return P.pos; }, get vel() { return P.vel; }, get dead() { return P.dead; } };
+const _tgA = new T.Vector3(), _tgB = new T.Vector3();
+function tgOk(e, t) {
+  if (!t) return false;
+  if (t === PLY) return !P.dead && (G.state === 'city' || G.state === 'transit') && (!G.inside || !!e.clubber);
+  return !t.dead && !t.gone && !(t.waitT >= 0) && !(t.vanish > 0) && t.mode !== 'enter';
+}
+// chest height: where a round is aimed
+function tgAim(t, out) {
+  if (t === PLY) return out.set(P.pos.x, P.pos.y + P.eyeH + (P.crouching ? -.25 : -.4), P.pos.z);
+  if (t.isCiv) return out.set(t.pos.x, t.st.crouch ? .75 : 1.2, t.pos.z);
+  const k = t.hH / 1.68 * t.R.root.scale.y; return out.set(t.pos.x, t.pos.y + (t.st.crouch ? .9 : 1.2) * k, t.pos.z);
+}
+// head height: what a sightline has to reach
+function tgEye(t, out) {
+  if (t === PLY) return out.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z);
+  if (t.isCiv) return out.set(t.pos.x, t.st.crouch ? 1.0 : 1.55, t.pos.z);
+  return t.headPos(out);
+}
+function tgHurt(t, dmg, by, part, dir) {
+  if (t === PLY) { damagePlayer(dmg, by.pos, by); return P.dead; }
+  if (t.isCiv) { t.hurt(dmg * 2, by); return t.dead; }
+  return t.hurt(dmg * (part === 'head' ? 2 : part === 'limb' ? .8 : 1), part || 'body', dir || null, by.npcSrc);
+}
+// the camera's horizontal view, once a frame: fights nobody can see or reach are resolved on paper (farExchange)
+const CAMF = { t: -1, x: 0, z: -1, cos: .5 };
+function camFrame() {
+  if (CAMF.t === G.t) return CAMF; CAMF.t = G.t;
+  camera.getWorldDirection(_tgA); const l = Math.hypot(_tgA.x, _tgA.z) || 1; CAMF.x = _tgA.x / l; CAMF.z = _tgA.z / l;
+  const hh = Math.atan(Math.tan(camera.fov * Math.PI / 360) * camera.aspect); CAMF.cos = Math.cos(Math.min(1.45, hh + .25)); CAMF.cull = Math.cos(Math.min(1.6, hh + .5)); return CAMF;
+}
+// skinned bodies draw with culling off (meshopt breaks their bounds), so one well outside the view is hidden by hand.
+// d2: squared distance from the camera; the root stays visible (it means 'materialised' to hit tests and tags)
+function bodyInView(x, z, d2) { if (d2 < 49) return true; const C = camFrame(), dx = x - camera.position.x, dz = z - camera.position.z; return dx * C.x + dz * C.z > Math.sqrt(d2) * C.cull; }
+function unseenAt(x, z) {
+  const C = camFrame(), dx = x - camera.position.x, dz = z - camera.position.z, d2 = dx * dx + dz * dz;
+  return d2 > 70 * 70 && dx * C.x + dz * C.z < Math.sqrt(d2) * C.cos;
+}
+
+/* ---------- who fights whom. Faction rules first, then grudges: whoever hurts you (or your squad) is fair game ---------- */
+const WATCH_R = 13, WATCH_WARN = 24;
+// grudges are pairs [target, until]; a squad's grudge is stored against -sq so it covers every member of the other side
+function grudge(e, t) {
+  const g = e.gr; if (!g) return false;
+  for (let i = 0; i < g.length; i += 2) if ((g[i] === t || (t.sq && g[i] === -t.sq)) && g[i + 1] > G.t) return true;
+  return false;
+}
+function addGrudge(e, t, dur) {
+  const g = e.gr || (e.gr = []), until = G.t + dur;
+  for (let i = 0; i < g.length; i += 2) if (g[i] === t) { if (g[i + 1] < until) g[i + 1] = until; return; }
+  if (g.length < 8) { g.push(t, until); return; }
+  let k = 1; for (let i = 3; i < g.length; i += 2) if (g[i] < g[k]) k = i; g[k - 1] = t; g[k] = until; // full: replace the stalest
+}
+function squadGrudge(e, t, dur) {
+  if (!t || t === e || !e.human) return;
+  addGrudge(e, t, dur); if (t.sq && t !== PLY) addGrudge(e, -t.sq, dur * .6);
+  if (e.sq) for (const o of ENEMIES) if (o !== e && o.sq === e.sq && !o.dead) { addGrudge(o, t, dur); if (t.sq && t !== PLY) addGrudge(o, -t.sq, dur * .6); }
+}
+function factionHostile(a, b) {
+  const fa = a.fac;
+  if (b === PLY) {
+    if (fa === 'purger' || fa === 'sweeper' || fa === 'monster') return true;
+    const d2 = (fa === 'watch' ? a.post : a.pos).distanceToSquared(P.pos);
+    return d2 < (fa === 'watch' ? WATCH_R * WATCH_R : fa === 'looter' ? 36 : 225); // the porch, arm's length, a crew's personal space
+  }
+  if (b.isCiv) return fa === 'purger' || fa === 'looter';
+  const fb = b.fac; if (!fb || fa === 'monster') return false;
+  if (fb === 'monster') return b.mode !== 'disguise' && fa !== 'looter';           // whatever that is, it isn't a person
+  if (fa === fb) return false;
+  if (fa === 'purger' || fa === 'sweeper') return true;
+  if (fa === 'watch') return b.pos.distanceToSquared(a.post) < WATCH_R * WATCH_R;
+  if (fa === 'looter') return b.hp < b.maxHp * .45;                                // only the wounded
+  return fb !== 'watch';                                                           // crews: rivals, purgers, sweepers, looters
+}
+function hostile(a, b) { return !!b && b !== a && !(b.sq && b.sq === a.sq) && !(a.clubber && b.clubber) && (grudge(a, b) || factionHostile(a, b)); } // a squad (or the club's ambush) never turns on itself
+// what sends a crowd running: monsters, purgers, looters, sweepers, and anyone already shooting
+const scaresCivs = e => e.mode !== 'disguise' && (!e.human || e.fac === 'purger' || e.fac === 'looter' || e.fac === 'sweeper' || (!!e.tg && e.seesT));
+
 /* ---------- HEAT 0..5: how loud the night is around you. Gunfire people hear, bodies, blasts and roadkill raise it;
    it only cools while nothing has eyes on you (faster behind a door). Squads coordinate harder and traffic spooks easier as it climbs. ---------- */
 const HEAT = {
@@ -54,27 +136,31 @@ const HEAT = {
     if ((this.scanT -= dt) <= 0) { this.scanT = .25; this.scan(); }
     this.calm += dt; if (this.calm > 6) this.level = Math.max(0, this.level - dt * (G.inside ? .16 : .045));
   },
-  scan() { // eyes on you, fresh bodies (purgers count most: they're the organised ones), cars that just went up
+  scan() { // eyes on you, fresh bodies you dropped (purgers count most: they're the organised ones), cars you set off
     let eyes = false;
     for (const e of ENEMIES) {
       if (!e.dead) { if (e.seesP) eyes = true; continue; }
-      if (e._hk) continue; e._hk = 1; if (e.deadT > 1.5 || e.pos.distanceToSquared(P.pos) > 140 * 140) continue;
-      let k = e.type === 'purger' ? (e.possessed ? .55 : .35) : .18; if (P.inCar && Math.abs(P.inCar.speed) > 5 && e.pos.distanceToSquared(P.inCar.pos) < 30) k += .3; this.add(k);
+      if (e._hk) continue; e._hk = 1; if (!e.killedByP || e.deadT > 1.5 || e.pos.distanceToSquared(P.pos) > 140 * 140) continue; // the street's own fights are not on you
+      let k = e.type === 'purger' || e.type === 'sweeper' ? (e.possessed ? .55 : .35) : .18; if (P.inCar && Math.abs(P.inCar.speed) > 5 && e.pos.distanceToSquared(P.inCar.pos) < 30) k += .3; this.add(k);
     }
     if (eyes) { this.calm = 0; this.lk.copy(P.pos); this.lkT = G.t; }
-    for (const c of CARS) if (c.dead && !c._hx) { c._hx = 1; if (c.pos.distanceToSquared(P.pos) < 100 * 100) this.add(.5); }
+    for (const c of CARS) if (c.dead && !c._hx) { c._hx = 1; if (c.pos.distanceToSquared(P.pos) < (c.lastHitBy === PLY ? 100 * 100 : 25 * 25)) this.add(.5); }
   },
 };
 window.HEAT = HEAT;
 
 /* ---------- noise events ---------- */
 const NOISES = []; let _noiseI = 0;
-// returns how many people (enemies + civilians) heard it
-function makeNoise(pos, radius, kind) {
+// returns how many people (enemies + civilians) heard it. by: who made it (an enemy for 'eshot', 'blast', 'fire')
+function makeNoise(pos, radius, kind, by) {
   let nz = NOISES[_noiseI]; if (!nz) nz = NOISES[_noiseI] = { p: new T.Vector3(), r: 0, t: 0, kind: '' }; _noiseI = (_noiseI + 1) % 20;
   nz.p.copy(pos); nz.r = radius; nz.t = G.t; nz.kind = kind;
   let heard = 0;
-  for (const e of ENEMIES) { if (e.dead || (kind === 'eshot' && e.aware)) continue; const d = e.pos.distanceTo(pos); if (d < radius) { alertEnemy(e, pos, d < radius * .4 ? 1.5 : 5); heard++; } }
+  for (const e of ENEMIES) {
+    if (e.dead || e === by) continue; const d = e.pos.distanceTo(pos); if (d >= radius) continue;
+    if (e.human) hearNoise(e, pos, d, radius, kind); else if (kind !== 'eshot' || !e.aware) alertEnemy(e, pos, d < radius * .4 ? 1.5 : 5);
+    heard++;
+  }
   for (const c of CIVS) { if (c.dead) continue; if (c.pos.distanceTo(pos) < radius * .8) { c.panic(pos); heard++; } }
   return heard;
 }
@@ -82,17 +168,86 @@ function alertEnemy(e, pos, fuzz) {
   if (e.mode === 'disguise') return;
   e.aware = true; e.awareT = G.t; (e.lastKnown || (e.lastKnown = new T.Vector3())).set(pos.x + rand(-fuzz, fuzz), pos.y, pos.z + rand(-fuzz, fuzz));
 }
+// people only treat gunfire as being about them when it is: purgers and sweepers come to the shooter, the rest mind their own corner
+function hearNoise(e, pos, d, r, kind) {
+  const fa = e.fac;
+  if (kind === 'shot') { // the player's
+    if (fa === 'purger' || fa === 'sweeper') { alertEnemy(e, pos, d < r * .4 ? 1.5 : 5); return; }
+    if (fa === 'looter') { if (d < 22) looterScare(e, pos); return; }
+    if (fa === 'watch' ? P.pos.distanceTo(e.post) < WATCH_R + 6 : d < 16) { squadGrudge(e, PLY, 25); alertEnemy(e, pos, 1); return; } // shooting on their porch is shooting at them
+    if (fa === 'watch' || d > 35 || Math.random() < .6) { e.lookP = pos; e.lookT = 2.5; return; }
+  } else if (fa === 'looter') { if (d < 26 && kind !== 'callout') looterScare(e, pos); return; }
+  if (e.tg && e.seesT) return;           // busy
+  if (fa === 'watch') { e.lookP = pos; e.lookT = 3; return; } // they hold the porch: look, don't go
+  alertEnemy(e, pos, d < r * .4 ? 2 : 6);
+}
 // the player's shots tell everyone in earshot, and rattle anyone the rounds pass near
 function playerShotNoise(o, d, len, sup) {
   const heard = makeNoise(P.pos, sup ? 16 : 75, 'shot'); if (!sup) trafficPanic(P.pos);
   if (heard) { HEAT.shot(heard); HEAT.lk.copy(P.pos); HEAT.lkT = G.t; }
   for (const e of ENEMIES) {
     if (e.dead) continue; const v = _av1.set(e.pos.x - o.x, e.pos.y + 1.68 * e.scale * (e.st.crouch ? .8 : 1) - o.y, e.pos.z - o.z); const t = clamp(v.dot(d), 0, len); const miss = v.addScaledVector(d, -t).length();
-    if (miss < 1.8 && t > 2) { e.supp = Math.min(1, (e.supp || 0) + (1.8 - miss) * .35); if (e.aware) e.lastKnown.copy(P.pos); else alertEnemy(e, P.pos, 3); }
+    if (miss < 1.8 && t > 2) {
+      e.supp = Math.min(1, (e.supp || 0) + (1.8 - miss) * .35);
+      if (e.human && e.fac !== 'purger' && e.fac !== 'sweeper') { if (e.fac === 'looter') looterScare(e, P.pos); else squadGrudge(e, PLY, 30); } // shot at is shot at
+      if (e.human && e.tg && e.tg !== PLY) continue;
+      if (e.aware) e.lastKnown.copy(P.pos); else alertEnemy(e, P.pos, 3);
+    }
   }
 }
 
-/* ---------- perception tick (all enemies) ---------- */
+/* ---------- people: pick a target. Nearest hostile they can see (or hear firing), held a while once chosen,
+   with sightlines rationed per frame and the scans staggered so a crowd of fighters costs a handful of rays ---------- */
+const SCAN = { t: -1, n: 0 }, _scT = [null, null, null], _scS = [0, 0, 0];
+let _scN = 0;
+function scCand(t, s) {
+  if (_scN === 3 && s >= _scS[2]) return;
+  let i = _scN < 3 ? _scN++ : 2; while (i > 0 && _scS[i - 1] > s) { _scT[i] = _scT[i - 1]; _scS[i] = _scS[i - 1]; i--; } _scT[i] = t; _scS[i] = s;
+}
+function fighterScan(e, dt) {
+  e.supp = Math.max(0, (e.supp || 0) - dt * .35);
+  if ((e.percT = (e.percT || 0) - dt) > 0) return;
+  if (SCAN.t !== G.t) { SCAN.t = G.t; SCAN.n = 0; }
+  if (SCAN.n >= (G.quality === 'high' ? 14 : 8)) return; // this frame's sightlines are spent: next frame
+  e.percT = .28 + Math.random() * .14;
+  const cur = tgOk(e, e.tg) && hostile(e, e.tg) ? e.tg : null, fx = -Math.sin(e.face), fz = -Math.cos(e.face), aw = e.aware;
+  const R = (aw ? 58 : 42) + (e.fac === 'sweeper' ? 12 : 0), cone = aw ? -.2 : .45;
+  _scN = 0;
+  // the player: v21's rules (crouching shortens it, a hot night lengthens it, too close to miss)
+  if (tgOk(e, PLY) && hostile(e, PLY)) {
+    const dx = P.pos.x - e.pos.x, dz = P.pos.z - e.pos.z, d = Math.hypot(dx, dz) || 1;
+    const range = (aw ? 70 : 45 * (1 + HEAT.level * .06)) * (P.crouching ? .7 : 1), feel = d < (P.crouching ? 3 : 6), loud = G.t - (P.lastFire || -99) < 1.5 && d < 60;
+    if (feel || loud || ((dx * fx + dz * fz) / d > cone && d < range)) scCand(PLY, d * (cur === PLY ? .65 : 1) * (grudge(e, PLY) ? .6 : 1) * (e.fac === 'purger' ? .85 : 1));
+  }
+  for (const o of ENEMIES) {
+    if (o === e || o.dead || !(o.waitT < 0) || o.vanish > 0 || (o.R && !o.R.root.visible)) continue;
+    const dx = o.pos.x - e.pos.x, dz = o.pos.z - e.pos.z, d2 = dx * dx + dz * dz; if (d2 > R * R) continue;
+    if (!hostile(e, o)) continue;
+    const d = Math.sqrt(d2) || 1, loud = G.t - (o.lastShotT || -99) < 1.5;
+    if (!loud && d > 6 && (dx * fx + dz * fz) / d < cone) continue;
+    scCand(o, d * (o === cur ? .65 : 1) * (grudge(e, o) ? .6 : 1));
+  }
+  if (e.fac === 'purger' || e.fac === 'looter') { // prey: a civilian, when there's nobody worth the bullet
+    const pr = e.fac === 'purger' ? 22 : 15;
+    for (const c of CIVS) { if (c.dead || c.gone || c.mode === 'enter') continue; const dx = c.pos.x - e.pos.x, dz = c.pos.z - e.pos.z, d2 = dx * dx + dz * dz; if (d2 < pr * pr) scCand(c, Math.sqrt(d2) * (c === cur ? 1.2 : 1.9) + 4); }
+  }
+  let pick = null;
+  for (let i = 0; i < _scN && i < 2; i++) {
+    const t = _scT[i]; SCAN.n++;
+    if (aiLos(_tgA.set(e.pos.x, e.pos.y + e.hH * e.R.root.scale.y * (e.st.crouch ? .8 : 1), e.pos.z), tgEye(t, _tgB))) { pick = t; break; }
+  }
+  for (let i = 0; i < 3; i++) _scT[i] = null;
+  if (pick) {
+    if (pick !== e.tg || !e.seesT) { if (!e.aware || pick !== e.tg) { e.reactT = pick === PLY ? rand(.45, .85) : rand(.3, .65); e.spotT = G.t; } }
+    e.tg = pick; e.seesT = true; e.lastSeen = G.t; e.aware = true; e.awareT = G.t; (e.lastKnown || (e.lastKnown = new T.Vector3())).copy(pick.pos);
+    if (pick === PLY && e.fac !== 'purger' && e.fac !== 'sweeper' && !grudge(e, PLY)) { addGrudge(e, PLY, e.fac === 'watch' ? 8 : 12); if (e.fac === 'watch') watchWarn(e, true); } // stepped over the line: it holds a while after you step back
+  } else if (cur) { e.tg = cur; e.seesT = false; if (G.t - (e.lastSeen || -99) > (cur === PLY ? 14 : 9)) { e.tg = null; } }
+  else { e.tg = null; e.seesT = false; }
+  e.seesP = e.tg === PLY && e.seesT;
+  if (!e.tg && e.aware && G.t - (e.awareT || -99) > 14) { e.aware = false; e.searchT = 0; }
+}
+
+/* ---------- perception tick (monsters: they only ever want you) ---------- */
 function perceive(e, dt, dist) {
   e.percT = (e.percT || 0) - dt; e.supp = Math.max(0, (e.supp || 0) - dt * .35);
   if (e.percT > 0) return; e.percT = .25 + Math.random() * .1;
@@ -136,20 +291,23 @@ function navPoint(e, tgt) {
 /* ---------- cover ---------- */
 const _cc = []; let _ccN = 0;
 const _ccPush = (x, z) => { const v = _cc[_ccN] || (_cc[_ccN] = new T.Vector3()); _ccN++; return v.set(x, 0, z); };
-function coverCandidates(e) {
+// th: the threat's feet (the player by default)
+function coverCandidates(e, th) {
   _ccN = 0;
   // the far side of parked cars and low street clutter (crates, dumpsters, barriers), then random probes
-  for (const c of CARS) { if (c.gone || c === P.inCar || c.pos.distanceToSquared(e.pos) > 22 * 22) continue; let ux = c.pos.x - P.pos.x, uz = c.pos.z - P.pos.z; const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul; for (const k of [0, 1.6, -1.6]) _ccPush(c.pos.x + ux * 2.3 - uz * k, c.pos.z + uz * 2.3 + ux * k); }
-  for (const b of boxesNear(e.pos.x, e.pos.z)) { if (b.y1 < .9 || b.y1 > 2.2 || b.water || _ccN > 56) continue; const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2; let ux = cx - P.pos.x, uz = cz - P.pos.z; const ul = Math.hypot(ux, uz) || 1; const r = Math.max(b.x1 - b.x0, b.z1 - b.z0) / 2 + .7; _ccPush(cx + ux / ul * r, cz + uz / ul * r); }
+  for (const c of CARS) { if (c.gone || c === P.inCar || c.pos.distanceToSquared(e.pos) > 22 * 22) continue; let ux = c.pos.x - th.x, uz = c.pos.z - th.z; const ul = Math.hypot(ux, uz) || 1; ux /= ul; uz /= ul; for (let j = -1; j <= 1; j++) _ccPush(c.pos.x + ux * 2.3 - uz * j * 1.6, c.pos.z + uz * 2.3 + ux * j * 1.6); }
+  const nb = boxesNearN(e.pos.x, e.pos.z);
+  for (let q = 0; q < nb && _ccN < 56; q++) { const b = _bn[q]; if (b.y1 < .9 || b.y1 > 2.2 || b.water) continue; const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2; let ux = cx - th.x, uz = cz - th.z; const ul = Math.hypot(ux, uz) || 1; const r = Math.max(b.x1 - b.x0, b.z1 - b.z0) / 2 + .7; _ccPush(cx + ux / ul * r, cz + uz / ul * r); }
   for (let k = 0; k < 8; k++) { const a = Math.random() * TAU, r = rand(3, 13); _ccPush(e.pos.x + Math.cos(a) * r, e.pos.z + Math.sin(a) * r); }
   return _ccN;
 }
-function findCover(e, from) {
-  let best = null, bs = 1e9, bpk = false; const tgt = from || _av5.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z);
-  const n = coverCandidates(e);
+// th: threat feet, from: the threat's eyes (defaults: the player)
+function findCover(e, from, th) {
+  let best = null, bs = 1e9, bpk = false; const tgt = from || _av5.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z), tp = th || P.pos;
+  const n = coverCandidates(e, tp);
   for (let i = 0; i < n; i++) {
     const p = _cc[i], r = p.distanceTo(e.pos); if (r > 22) continue;
-    const dP = p.distanceTo(P.pos); if (dP < 7 || dP > 42) continue;
+    const dP = p.distanceTo(tp); if (dP < 7 || dP > 42) continue;
     let taken = false; for (const o of ENEMIES) if (o !== e && o.cover && o.cover.p.distanceToSquared(p) < 1.5) { taken = true; break; } if (taken) continue;
     const test = _av4.copy(p); collideCircle(test, .5, 0, 1.8); if (test.distanceTo(p) > .05) continue;
     if (aiLos(_av1.set(p.x, 1.0, p.z), tgt)) continue;                                        // must hide a crouched body
@@ -163,30 +321,36 @@ function findCover(e, from) {
 /* ---------- squad director: who suppresses, who flanks, who radios it in ---------- */
 let squadT = 0;
 const _sqL = [], _sqCmp = (a, b) => (a.sq || 0) - (b.sq || 0) || a._d2 - b._d2;
+const SQLEAD = new Map();
 function updateSquads(dt) {
   HEAT.update(dt);
   squadT -= dt; if (squadT > 0) return; squadT = .6;
-  const heat = HEAT.level; _sqL.length = 0;
+  const heat = HEAT.level; _sqL.length = 0; SQLEAD.clear();
   for (const e of ENEMIES) {
-    if (e.dead || e.type !== 'purger') continue;
-    if (!e.aware) { // on a hot night the idle ones drift in on where you were last heard or seen
-      if (heat >= 1.5 && !G.inside && G.t - HEAT.lkT < 20 && e.pos.distanceToSquared(HEAT.lk) < (40 + heat * 22) ** 2 && Math.random() < heat * .03) alertEnemy(e, HEAT.lk, 8 - heat);
+    if (e.dead || !e.human) continue;
+    if (e.sq && (!SQLEAD.has(e.sq) || e.id < SQLEAD.get(e.sq).id)) SQLEAD.set(e.sq, e); // the oldest walks point
+    if (!e.aware) { // on a hot night the idle purgers and sweepers drift in on where you were last heard or seen
+      if ((e.fac === 'purger' || e.fac === 'sweeper') && heat >= 1.5 && !G.inside && G.t - HEAT.lkT < 20 && e.pos.distanceToSquared(HEAT.lk) < (40 + heat * 22) ** 2 && Math.random() < heat * .03) alertEnemy(e, HEAT.lk, 8 - heat);
       continue;
     }
+    if (e.fac === 'watch' || e.fac === 'looter') continue; // no flanking off a porch, no tactics in a smash-and-grab
     e._d2 = e.dist2(); _sqL.push(e);
   }
+  for (const e of ENEMIES) if (e.sq && !e.dead) e.lead = SQLEAD.get(e.sq) || null;
   if (!_sqL.length) return;
   _sqL.sort(_sqCmp);
   for (let i0 = 0; i0 < _sqL.length;) { const sq = _sqL[i0].sq || 0; let i1 = i0 + 1; while (i1 < _sqL.length && (_sqL[i1].sq || 0) === sq) i1++; squadRoles(i0, i1, heat); i0 = i1; }
 }
-// one squad (a gang crew, or the street's loose purgers as squad 0), nearest first
+// one squad (a crew, a sweep team, or the street's loose purgers as squad 0), nearest first; its target is the one most of it is on
 function squadRoles(i0, i1, heat) {
-  let cx = 0, cz = 0, nr = 0, eyes = false;
-  for (let i = i0; i < i1; i++) { const e = _sqL[i]; cx += e.pos.x; cz += e.pos.z; if (e.ranged) nr++; if (e.seesP) eyes = true; }
+  let cx = 0, cz = 0, nr = 0, eyes = false, TG = null, tn = 0;
+  for (let i = i0; i < i1; i++) { const e = _sqL[i]; if (!e.tg) continue; let n = 0; for (let j = i0; j < i1; j++) if (_sqL[j].tg === e.tg) n++; if (n > tn) { tn = n; TG = e.tg; } }
+  if (TG && !tgOk(_sqL[i0], TG)) TG = null;
+  for (let i = i0; i < i1; i++) { const e = _sqL[i]; cx += e.pos.x; cz += e.pos.z; if (e.ranged) nr++; if (TG && e.tg === TG && e.seesT) eyes = true; }
   cx /= i1 - i0; cz /= i1 - i0;
-  // whoever has eyes on you calls it out; the hotter the night the tighter the callout
-  if (eyes) { const f = Math.max(0, 3.5 - heat); for (let i = i0; i < i1; i++) { const e = _sqL[i]; if (e.seesP) continue; e.lastKnown.set(P.pos.x + rand(-f, f), 0, P.pos.z + rand(-f, f)); e.awareT = G.t; } }
-  const tg = eyes ? P.pos : G.t - HEAT.lkT < 8 ? HEAT.lk : _sqL[i0].lastKnown;
+  // whoever has eyes on the target calls it out; on the player, the hotter the night the tighter the callout
+  if (eyes) { const f = TG === PLY ? Math.max(0, 3.5 - heat) : 2, tp = TG.pos; for (let i = i0; i < i1; i++) { const e = _sqL[i]; if (e.tg === TG && e.seesT) continue; if (e.tg && e.seesT) continue; if (!hostile(e, TG)) continue; if (e.tg !== TG) e.lastSeen = G.t - 1.5; e.tg = TG; e.lastKnown.set(tp.x + rand(-f, f), 0, tp.z + rand(-f, f)); e.awareT = G.t; } } // told where it is: as good as a glimpse
+  const tg = eyes ? TG.pos : TG === PLY && G.t - HEAT.lkT < 8 ? HEAT.lk : _sqL[i0].lastKnown;
   let ax = cx - tg.x, az = cz - tg.z; const al = Math.hypot(ax, az) || 1; ax /= al; az /= al;
   const nSup = heat >= 3 ? 1 : 2, flankMin = heat >= 2 ? 2 : 3, wide = 16 + heat * 2; let ri = 0;
   for (let i = i0; i < i1; i++) {
@@ -199,58 +363,184 @@ function squadRoles(i0, i1, heat) {
   }
 }
 
-/* ---------- tactical purger ---------- */
-function purgerAI(e, dt, dist) {
-  const px = P.pos.x, pz = P.pos.z; const spd = e.speed * (e.possessed ? 1.4 : 1);
-  if (!e.aware) return idleAI(e, dt, dist);
-  if (e.hp < e.maxHp * .32 && e.role !== 'retreat' && !e.possessed) { e.role = 'retreat'; e.cover = null; e.coverT = 0; makeNoise(e.pos, 30, 'callout'); }
-  const tgt = e.seesP || G.t - (e.lastSeen || -99) < 1.2 ? P.pos : e.lastKnown;
+/* ---------- people in a fight: the purgers' tactics (cover, peeking, suppression, flanks, retreat), on whoever they're after ---------- */
+// per gun: damage a round, burst length, gap between rounds, pause between bursts, reach. Purgers keep v21's numbers (wst null)
+const NPC_WEAP = {
+  preacher: { dmg: 9, burst: [1, 2], gap: .34, cd: [.9, 1.6], range: 38 },
+  vexor: { dmg: 5, burst: [3, 6], gap: .08, cd: [1.1, 2], range: 34 },
+  kalash: { dmg: 8, burst: [2, 5], gap: .11, cd: [1, 1.9], range: 52 },
+  patriot15: { dmg: 8, burst: [2, 4], gap: .1, cd: [.9, 1.6], range: 56 },
+  riot: { dmg: 20, burst: [1, 1], gap: .9, cd: [.9, 1.5], range: 27, spread: 1.7 }, // slugs: a porch's reach
+  longshot: { dmg: 30, burst: [1, 1], gap: 1, cd: [2, 3.2], range: 75, spread: .45 },
+};
+const COVB = { t: -1, n: 0 }, _fcE = new T.Vector3();
+// cover searches are the expensive part of a fight (dozens of sightlines each): a couple a frame, and none for a fight nobody can see
+function coverOk(e) { if (e.unseen) return false; if (COVB.t !== G.t) { COVB.t = G.t; COVB.n = 0; } if (COVB.n >= (G.quality === 'high' ? 2 : 1)) return false; COVB.n++; return true; }
+function fighterAI(e, dt) {
+  if (e.fac === 'watch') return watchAI(e, dt);
+  if (e.fac === 'looter' && looterFlee(e, dt)) return;
+  const TG = tgOk(e, e.tg) ? e.tg : null; if (!TG) { e.tg = null; e.seesT = false; e.seesP = false; }
+  if (!TG && !e.aware) return idleHuman(e, dt);
+  const spd = e.speed * (e.possessed ? 1.4 : 1);
+  if (TG && e.hp < e.maxHp * .32 && e.role !== 'retreat' && !e.possessed && e.fac !== 'looter') { e.role = 'retreat'; e.cover = null; e.coverT = 0; makeNoise(e.pos, 30, 'callout', e); }
+  const tgt = TG && (e.seesT || G.t - (e.lastSeen || -99) < 1.2) ? TG.pos : e.lastKnown;
+  const dist = Math.hypot(tgt.x - e.pos.x, tgt.z - e.pos.z); e.tgD = dist;
   if (!e.ranged) { // melee rusher: arc in from the side, sprint the last stretch
-    const nv = e.seesP ? tgt : navPoint(e, tgt); let tx = nv.x - e.pos.x, tz = nv.z - e.pos.z; const d0 = Math.hypot(tx, tz) || 1; tx /= d0; tz /= d0; const d = e.pos.distanceTo(tgt);
-    const arc = d > 5 && e.seesP ? .55 * (e.flankSide || 1) : 0; let dx = tx - tz * arc, dz = tz + tx * arc; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
-    const s = d > 2 ? spd * (d < 12 ? 1.35 : 1) : 0; e.vel.x = damp(e.vel.x, dx * s, 8, dt); e.vel.z = damp(e.vel.z, dz * s, 8, dt);
-    e.turnTo(tgt.x, tgt.z, dt, 9); e.melee(1.9, 14, .55, 1.0, dist); return;
+    if (!TG && dist < 3) return fighterSearch(e, dt);
+    const nv = e.seesT ? tgt : navPoint(e, tgt); let tx = nv.x - e.pos.x, tz = nv.z - e.pos.z; const d0 = Math.hypot(tx, tz) || 1; tx /= d0; tz /= d0;
+    const arc = dist > 5 && e.seesT ? .55 * (e.flankSide || 1) : 0; let dx = tx - tz * arc, dz = tz + tx * arc; const dl = Math.hypot(dx, dz) || 1; dx /= dl; dz /= dl;
+    const s = dist > 1.6 ? spd * (dist < 12 ? 1.35 : 1) : 0; e.vel.x = damp(e.vel.x, dx * s, 8, dt); e.vel.z = damp(e.vel.z, dz * s, 8, dt);
+    e.st.crouch = 0; e.turnTo(tgt.x, tgt.z, dt, 9); if (TG) e.melee(1.9, e.fac === 'looter' ? 12 : 14, .55, 1.0, dist); return;
   }
   // ranged. Lost sight for a while → leave cover and hunt; the suppressor holds the angle a bit longer, flankers swing wide
-  const lostFor = e.seesP ? 0 : G.t - (e.lastSeen || -99);
-  const lost = lostFor > (e.role === 'suppress' ? 9 : 4);
+  const lostFor = e.seesT ? 0 : G.t - (e.lastSeen || -99);
+  const lost = !TG || lostFor > (e.role === 'suppress' ? 9 : 4);
   if (lost && e.cover) { e.cover = null; e.coverT = 3; }
   if (lost && e.role === 'flank' && !(e.flankT > 0) && e.lastKnown) { let sx = -(e.lastKnown.z - e.pos.z), sz = e.lastKnown.x - e.pos.x; const sl = Math.hypot(sx, sz) || 1; e.flankPt = (e.flankPt || new T.Vector3()).set(e.lastKnown.x + sx / sl * 9 * (e.flankSide || 1), 0, e.lastKnown.z + sz / sl * 9 * (e.flankSide || 1)); collideCircle(e.flankPt, .5, 0, 1.8); e.flankT = 7; }
   e.coverT = (e.coverT || 0) - dt;
-  if (!lost && (!e.cover || e.coverT <= 0) && (e.supp > .35 || e.role === 'suppress' || e.role === 'retreat' || Math.random() < dt * .4)) {
-    e.cover = findCover(e); e.coverT = e.cover ? rand(5, 9) : 2;
-    if (e.role === 'retreat' && e.cover && e.cover.p.distanceTo(P.pos) < e.pos.distanceTo(P.pos)) e.cover = null;
+  if (!lost && (!e.cover || e.coverT <= 0) && (e.supp > .35 || e.role === 'suppress' || e.role === 'retreat' || Math.random() < dt * (e.fac === 'crew' ? .2 : .4)) && coverOk(e)) {
+    e.cover = findCover(e, tgEye(TG, _fcE), TG.pos); e.coverT = e.cover ? rand(5, 9) : 2;
+    if (e.role === 'retreat' && e.cover && e.cover.p.distanceTo(TG.pos) < e.pos.distanceTo(TG.pos)) e.cover = null;
   }
+  const W = e.wst, far = W ? Math.min(32, W.range * .7) : 32, near = W && W.range < 25 ? 5 : 9;
   let moving = false;
   if (e.role === 'flank' && e.flankPt && e.flankT > 0) {
     e.flankT -= dt; { const n = navPoint(e, e.flankPt); e.moveToward(n.x, n.z, spd * 1.15, dt); } moving = true; if (e.pos.distanceTo(e.flankPt) < 3) { e.flankT = 0; e.cover = null; e.coverT = 0; }
   } else if (e.cover && e.pos.distanceTo(e.cover.p) > .8) { e.moveToward(e.cover.p.x, e.cover.p.z, spd * (e.supp > .5 ? 1.25 : 1), dt); moving = true; }
-  else if (!e.seesP && !e.cover) { // no cover and no sight: push toward last known, then search
-    if (e.pos.distanceTo(tgt) > 3) { const n = navPoint(e, tgt); e.moveToward(n.x, n.z, spd * .9, dt); moving = true; }
+  else if (!e.seesT && !e.cover) { // no cover and no sight: push toward last known, then search
+    if (dist > 3) { const n = navPoint(e, tgt); e.moveToward(n.x, n.z, spd * .9, dt); moving = true; }
     else { e.searchT = (e.searchT || 0) + dt; if (!e.wDir || Math.random() < dt) e.wDir = Math.random() * TAU; e.vel.x = damp(e.vel.x, Math.sin(e.wDir) * 1.6, 3, dt); e.vel.z = damp(e.vel.z, Math.cos(e.wDir) * 1.6, 3, dt); }
-  } else if (!e.cover) { // in the open with eyes on you: close, keep distance, strafe
-    if (dist > 32) { e.moveToward(px, pz, spd, dt); moving = true; }
-    else if (dist < 9) { e.moveToward(e.pos.x * 2 - px, e.pos.z * 2 - pz, spd * .7, dt); moving = true; }
-    else { e.strafeT = (e.strafeT || 0) - dt; if (e.strafeT <= 0) { e.strafeT = rand(.9, 2.2); e.strafeS = Math.random() < .5 ? 1 : -1; } const s = e.strafeS * (e.supp > .4 ? 1.5 : 1); e.vel.x = damp(e.vel.x, -(pz - e.pos.z) / dist * 2.4 * s, 4, dt); e.vel.z = damp(e.vel.z, (px - e.pos.x) / dist * 2.4 * s, 4, dt); moving = true; }
+  } else if (!e.cover) { // in the open with eyes on the target: close, keep distance, strafe
+    const px = tgt.x, pz = tgt.z;
+    if (dist > far) { e.moveToward(px, pz, spd, dt); moving = true; }
+    else if (dist < near) { e.moveToward(e.pos.x * 2 - px, e.pos.z * 2 - pz, spd * .7, dt); moving = true; }
+    else { e.strafeT = (e.strafeT || 0) - dt; if (e.strafeT <= 0) { e.strafeT = rand(.9, 2.2); e.strafeS = Math.random() < .5 ? 1 : -1; } const s = e.strafeS * (e.supp > .4 ? 1.5 : 1); e.vel.x = damp(e.vel.x, -(pz - e.pos.z) / (dist || 1) * 2.4 * s, 4, dt); e.vel.z = damp(e.vel.z, (px - e.pos.x) / (dist || 1) * 2.4 * s, 4, dt); moving = true; }
   } else { e.vel.x = damp(e.vel.x, 0, 6, dt); e.vel.z = damp(e.vel.z, 0, 6, dt); }
   // in cover: crouch, pop up to fire, duck when suppressed. Flanked cover is abandoned.
   let inCover = e.cover && e.pos.distanceTo(e.cover.p) <= .8;
-  if (inCover && (e.cvT = (e.cvT || 0) - dt) <= 0) { e.cvT = .5; if (aiLos(_av4.set(e.cover.p.x, 1.0, e.cover.p.z), _av5.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z))) { e.cover = null; e.coverT = 0; inCover = false; } }
+  if (inCover && TG && (e.cvT = (e.cvT || 0) - dt) <= 0) { e.cvT = .5; if (aiLos(_av4.set(e.cover.p.x, 1.0, e.cover.p.z), tgEye(TG, _av5))) { e.cover = null; e.coverT = 0; inCover = false; } }
   e.peekT = (e.peekT || 0) - dt;
   if (inCover) { if (e.peekT <= 0) { e.peeking = !e.peeking; e.peekT = e.peeking ? rand(1.2, 2.2) * (1 - e.supp * .6) : rand(.8, 1.8) + e.supp * 1.5; } }
   else e.peeking = true;
   e.st.crouch = inCover && !e.peeking ? 1 : 0;
   e.turnTo(tgt.x, tgt.z, dt, 10);
-  // shoot: reaction time after first sighting, bursts, worse when suppressed or moving
+  fighterShoot(e, dt, TG, dist, moving);
+  // molotov to flush someone who's been hiding (the cooldown runs all the time, not only inside the throw window)
+  if (e.molotov && TG && !TG.isCiv) { e.moloCd = (e.moloCd || 0) - dt; const ls = G.t - (e.lastSeen || -99); if (e.moloCd <= 0 && !e.seesT && ls > 2.5 && ls < 10 && dist > 7 && dist < 26) { e.moloCd = rand(9, 14); if (aiLos(_av4.set(e.pos.x, 3.2, e.pos.z), _av5.set(e.lastKnown.x, 1.2, e.lastKnown.z))) throwMolotov(e, e.lastKnown); else e.moloCd = 2; } }
+  // frag: for a target dug in behind cover, or camping one spot
+  if (e.frags === undefined) e.frags = !e.molotov && (e.fac === 'purger' || e.fac === 'sweeper') && Math.random() < .3 + HEAT.level * .06 ? rint(1, 2) : 0;
+  if (e.frags > 0 && TG && !TG.isCiv) { if (e.fragCd === undefined) e.fragCd = rand(2, 5); if ((e.fragCd -= dt) <= 0) fragTry(e); }
+}
+// reaction time after first sighting, then bursts on the gun's cadence
+function fighterShoot(e, dt, TG, dist, moving) {
   if (e.reactT === undefined) e.reactT = rand(.3, .6); if (e.reactT > 0) e.reactT -= dt;
-  const canShoot = e.seesP && e.peeking && e.reactT <= 0 && dist < 55;
-  if (canShoot && e.cd <= 0 && !e.burst) { e.burst = e.role === 'suppress' ? rint(4, 7) : rint(2, 4); e.cd = rand(1.0, 1.9) / (e.possessed ? 1.6 : 1); e.bT = 0; }
-  if (e.burst > 0) { e.bT -= dt; if (e.bT <= 0) { e.burst--; e.bT = e.role === 'suppress' ? .11 : .14; enemyFire(e, 7 * e.dmgMul, dist, moving); } if (!e.seesP) e.burst = 0; }
-  // molotov to flush a player who's been hiding (the cooldown now runs all the time, not only inside the throw window)
-  if (e.molotov) { e.moloCd = (e.moloCd || 0) - dt; const ls = G.t - (e.lastSeen || -99); if (e.moloCd <= 0 && !e.seesP && ls > 2.5 && ls < 10 && dist > 7 && dist < 26) { e.moloCd = rand(9, 14); if (aiLos(_av4.set(e.pos.x, 3.2, e.pos.z), _av5.set(e.lastKnown.x, 1.2, e.lastKnown.z))) throwMolotov(e, e.lastKnown); else e.moloCd = 2; } }
-  // frag: for a player dug in behind cover, or camping one spot
-  if (e.frags === undefined) e.frags = !e.molotov && Math.random() < .3 + HEAT.level * .06 ? rint(1, 2) : 0;
-  if (e.frags > 0) { if (e.fragCd === undefined) e.fragCd = rand(2, 5); if ((e.fragCd -= dt) <= 0) fragTry(e); }
+  const W = e.wst, canShoot = TG && e.seesT && e.peeking !== false && e.reactT <= 0 && dist < (W ? W.range : 55);
+  if (canShoot && e.cd <= 0 && !e.burst) {
+    if (W) { e.burst = rint(W.burst[0], W.burst[1]) + (e.role === 'suppress' && W.burst[1] > 1 ? 2 : 0); e.cd = rand(W.cd[0], W.cd[1]); }
+    else { e.burst = e.role === 'suppress' ? rint(4, 7) : rint(2, 4); e.cd = rand(1.0, 1.9) / (e.possessed ? 1.6 : 1); }
+    e.bT = 0;
+  }
+  if (e.burst > 0) { e.bT -= dt; if (e.bT <= 0) { e.burst--; e.bT = W ? W.gap : e.role === 'suppress' ? .11 : .14; enemyFire(e, (W ? W.dmg : 7) * e.dmgMul, dist, moving); } if (!e.seesT) e.burst = 0; }
+}
+function fighterSearch(e, dt) {
+  e.searchT = (e.searchT || 0) + dt; if (!e.wDir || Math.random() < dt) e.wDir = Math.random() * TAU;
+  e.vel.x = damp(e.vel.x, Math.sin(e.wDir) * 1.6, 3, dt); e.vel.z = damp(e.vel.z, Math.cos(e.wDir) * 1.6, 3, dt); e.turnTo(e.pos.x + e.vel.x, e.pos.z + e.vel.z, dt, 3);
+}
+// nobody to fight: crews and sweep teams walk the streets behind their point man; loose purgers prowl like they always did
+function idleHuman(e, dt) {
+  e.st.crouch = 0; e.tgD = 99; e.seesT = false;
+  if (e.fac === 'looter') return looterIdle(e, dt);
+  if (e.lookT > 0 && e.lookP) { e.lookT -= dt; e.vel.x = damp(e.vel.x, 0, 5, dt); e.vel.z = damp(e.vel.z, 0, 5, dt); e.turnTo(e.lookP.x, e.lookP.z, dt, 5); return; }
+  const L = e.lead;
+  if (L && L !== e && !L.dead && !L.gone && L.pos.distanceToSquared(e.pos) < 45 * 45) {
+    const k = 1.3 + ((e.id >> 1) % 3) * 1.1, side = e.id % 2 ? 1 : -1, fx = -Math.sin(L.face), fz = -Math.cos(L.face);
+    const gx = L.pos.x - fx * k - fz * side * 1.2, gz = L.pos.z - fz * k + fx * side * 1.2, d = Math.hypot(gx - e.pos.x, gz - e.pos.z);
+    if (d > .7) { e.moveToward(gx, gz, d > 4 ? 3.8 : 1.8, dt); e.turnTo(e.pos.x + e.vel.x, e.pos.z + e.vel.z, dt, 4); }
+    else { e.vel.x = damp(e.vel.x, 0, 4, dt); e.vel.z = damp(e.vel.z, 0, 4, dt); e.turnTo(e.pos.x + fx, e.pos.z + fz, dt, 3); }
+    return;
+  }
+  if (!e.sq && e.fac === 'purger') { // v21's prowl, drifting toward you on a hot night
+    if (!e.wDir || Math.random() < dt * .25) { e.wDir = Math.random() * TAU; if (HEAT.level >= 2.5 && G.t - HEAT.lkT < 30 && Math.random() < .7) e.wDir = Math.atan2(HEAT.lk.x - e.pos.x, HEAT.lk.z - e.pos.z) + rand(-.5, .5); }
+    e.vel.x = damp(e.vel.x, Math.sin(e.wDir) * 1.5, 2, dt); e.vel.z = damp(e.vel.z, Math.cos(e.wDir) * 1.5, 2, dt); e.turnTo(e.pos.x + e.vel.x, e.pos.z + e.vel.z, dt, 3); return;
+  }
+  if (!e.roam || e.pos.distanceToSquared(e.roam) < 9 || (e.roamT = (e.roamT || 0) - dt) <= 0) pickRoam(e);
+  const n = navPoint(e, e.roam); e.moveToward(n.x, n.z, 1.7, dt); e.turnTo(e.pos.x + e.vel.x, e.pos.z + e.vel.z, dt, 3);
+}
+// a few blocks down the street it's on, or round the corner onto the cross street
+function pickRoam(e) {
+  e.roamT = rand(14, 26); const a = Math.random() * TAU, r = rand(22, 48); let x = e.pos.x + Math.cos(a) * r, z = e.pos.z + Math.sin(a) * r;
+  if (Math.random() < .5) x = roadNear(x) + (Math.random() < .5 ? -1 : 1) * rand(2.5, 6); else z = roadNear(z) + (Math.random() < .5 ? -1 : 1) * rand(2.5, 6);
+  (e.roam || (e.roam = new T.Vector3())).set(clamp(x, -HALF + 6, HALF - 6), 0, clamp(z, -HALF + 6, HALF - 6)); collideCircle(e.roam, .6, 0, 1.8);
+}
+
+/* ---------- Block Watch: a porch, a gun and a line you don't cross. They hold the post, warn, then fire ---------- */
+function watchAI(e, dt) {
+  const TG = tgOk(e, e.tg) ? e.tg : null; if (!TG) { e.tg = null; e.seesT = false; e.seesP = false; }
+  const h = e.home || e.pos, dh = Math.hypot(h.x - e.pos.x, h.z - e.pos.z);
+  if (TG) {
+    const tp = e.seesT ? TG.pos : e.lastKnown, dist = Math.hypot(tp.x - e.pos.x, tp.z - e.pos.z); e.tgD = dist; e.warnAim = 0;
+    if (dh > 3.5) e.moveToward(h.x, h.z, e.speed, dt); else { e.vel.x = damp(e.vel.x, 0, 6, dt); e.vel.z = damp(e.vel.z, 0, 6, dt); }
+    e.turnTo(tp.x, tp.z, dt, 9);
+    // between shots they duck behind the car or the stoop they're standing at
+    e.peekT = (e.peekT || 0) - dt; if (e.peekT <= 0) { e.peeking = !e.peeking || !e.seesT; e.peekT = e.peeking ? rand(1.4, 2.6) : rand(.6, 1.3) + (e.supp || 0); }
+    e.st.crouch = e.peeking ? 0 : 1;
+    fighterShoot(e, dt, TG, dist, dh > 3.5);
+    return;
+  }
+  e.st.crouch = 0; e.peeking = true; e.tgD = 99;
+  if (dh > 1) { e.moveToward(h.x, h.z, dh > 4 ? 3 : 1.4, dt); e.turnTo(e.pos.x + e.vel.x, e.pos.z + e.vel.z, dt, 5); e.warnAim = 0; return; }
+  e.vel.x = damp(e.vel.x, 0, 5, dt); e.vel.z = damp(e.vel.z, 0, 5, dt);
+  // the warning: someone armed walking up on the block gets watched, aimed at and told, once
+  if ((e.wchk = (e.wchk || 0) - dt) <= 0) {
+    e.wchk = .8; e.warnAim = 0;
+    for (const o of ENEMIES) if (o !== e && o.postObj === e.postObj && !o.dead && o.tg && o.seesT && tgOk(e, o.tg) && hostile(e, o.tg)) { e.tg = o.tg; e.aware = true; e.awareT = G.t; e.lastSeen = G.t - 1; (e.lastKnown || (e.lastKnown = new T.Vector3())).copy(o.tg.pos); e.percT = 0; return; } // a porch fights as one
+    const d = P.dead || G.inside ? 99 : P.pos.distanceTo(e.post);
+    if (d > WATCH_R && d < WATCH_WARN && aiLos(_av1.set(e.pos.x, e.pos.y + 1.6, e.pos.z), _av2.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z))) { e.warnAim = 1; watchWarn(e, false); }
+  }
+  if (e.warnAim) e.turnTo(P.pos.x, P.pos.z, dt, 6);
+  else if (e.lookT > 0 && e.lookP) { e.lookT -= dt; e.turnTo(e.lookP.x, e.lookP.z, dt, 5); }
+  else if (e.homeN) e.turnTo(h.x + e.homeN.x * 6 + Math.sin(e.t * .25 + e.id) * 4 * e.homeN.z, h.z + e.homeN.z * 6 - Math.sin(e.t * .25 + e.id) * 4 * e.homeN.x, dt, 1.5);
+}
+function watchWarn(e, hot) {
+  const W = e.postObj; if (!W || G.t - W.warnT < (hot ? 2.5 : 7)) return; W.warnT = G.t;
+  if (typeof AMB !== 'undefined' && AMB.bark) try { AMB.bark(e.pos, hot ? 'shout' : 'warn', { ambient: 1 }); } catch (er) { }
+  if (!hot && G.t - W.feedT > 30) { W.feedT = G.t; feed('<b>BLOCK WATCH</b> · "Keep walking. This block is ours."'); }
+}
+
+/* ---------- looters: a shopfront, a crowbar, and no stomach for a real fight ---------- */
+const _glassC = new T.Color(0xd8f0ff);
+function looterScare(e, from) {
+  if (e.dead || e.fac !== 'looter') return;
+  e.fleeT = Math.max(e.fleeT || 0, rand(4, 7)); (e.fleeFrom || (e.fleeFrom = new T.Vector3())).set(from.x, 0, from.z);
+  if (e.tg && !e.tg.isCiv && !(e.tg.hp < e.tg.maxHp * .3)) { e.tg = null; e.seesT = false; e.seesP = false; }
+}
+function looterFlee(e, dt) {
+  if ((e.fchk = (e.fchk || 0) - dt) <= 0) { // anyone armed and healthy coming for them, or rounds landing near: run
+    e.fchk = .5; let n = 0, sx = 0, sz = 0;
+    for (const o of ENEMIES) {
+      if (o === e || o.dead || !o.human || o.fac === 'looter' || o.waitT >= 0) continue; const d2 = o.pos.distanceToSquared(e.pos); if (d2 > 18 * 18) continue;
+      if ((o.tg === e || (d2 < 64 && hostile(o, e))) && o.hp > o.maxHp * .45) { n++; sx += o.pos.x; sz += o.pos.z; } // somebody's drawing on them, or right on top of them
+    }
+    if (n) looterScare(e, _av3.set(sx / n, 0, sz / n)); else if (e.supp > .3 && e.lastKnown) looterScare(e, e.lastKnown);
+  }
+  if (!(e.fleeT > 0)) return false;
+  e.fleeT -= dt; e.st.crouch = 0; e.tgD = 99; e.seesP = false;
+  let ax = e.pos.x - e.fleeFrom.x, az = e.pos.z - e.fleeFrom.z; const al = Math.hypot(ax, az) || 1; ax /= al; az /= al;
+  const j = Math.sin(e.t * 1.3 + e.id) * .4; e.moveToward(e.pos.x + (ax - az * j) * 6, e.pos.z + (az + ax * j) * 6, e.speed * 1.1, dt); e.turnTo(e.pos.x + e.vel.x, e.pos.z + e.vel.z, dt, 8);
+  if (e.fleeT <= 0 && e.home && e.home.distanceToSquared(e.pos) > 35 * 35) e.home.copy(e.pos); // far enough: this is the new spot
+  return true;
+}
+function looterIdle(e, dt) {
+  const h = e.home || e.pos, d = Math.hypot(h.x - e.pos.x, h.z - e.pos.z);
+  if (e.smashT === undefined) e.smashT = rand(1, 5);
+  if (d > 1.2) { e.moveToward(h.x, h.z, d > 5 ? 3.4 : 1.6, dt); e.turnTo(e.pos.x + e.vel.x, e.pos.z + e.vel.z, dt, 5); return; }
+  e.vel.x = damp(e.vel.x, 0, 5, dt); e.vel.z = damp(e.vel.z, 0, 5, dt);
+  if (e.homeN) e.turnTo(e.pos.x - e.homeN.x, e.pos.z - e.homeN.z, dt, 5); // face the shop
+  if ((e.smashT -= dt) <= 0) {
+    e.smashT = rand(3.5, 8); e.atk = e.atkDur = .55; const d2 = e.pos.distanceToSquared(P.pos);
+    if (d2 < 60 * 60) { const s = spatial(e.pos); AU.play('glass_shatter', { vol: .4 * s.vol, pan: s.pan }) || AU.nz(.3, 'highpass', 4000, 9000, 1, .25 * s.vol, s.pan); if (d2 < 40 * 40 && e.homeN) burst(FXN, _av3.set(e.pos.x - e.homeN.x * .8, 1.2, e.pos.z - e.homeN.z * .8), 8, 2.4, .6, .04, .05, _glassC, 10, .2); }
+    if (e.homeN && Math.random() < .4) { const s = rand(-4, 4); e.home.x += -e.homeN.z * s; e.home.z += e.homeN.x * s; collideCircle(e.home, .5, 0, 1.8); } // the next window along
+  }
 }
 
 // unaware: patrol, or prey on a civilian if one is close (the search and its sightline refresh a few times a second, not every frame)
@@ -277,35 +567,68 @@ function idleAI(e, dt, dist) {
   if (e.type === 'witch') e.pos.y = .7 + Math.sin(e.t * 2) * .25;
 }
 
-/* ---------- enemy fire: real rays (cover works, cars soak bullets) ---------- */
+/* ---------- enemy fire: real rays (cover works, cars soak bullets, a crossfire hits whoever is in it) ---------- */
 const _ef = new T.Vector3(), _efT = new T.Vector3(), _efD = new T.Vector3(), _efR = new T.Vector3(), _efU = new T.Vector3(), _efE = new T.Vector3(), _efN = new T.Vector3(), _efH = { t: 0, n: null, box: null };
+const NPCRAY = { t: -1, n: 0 }, SHOTSND = { t: -9 };
+// cheap reject before a body's capsule test: is its bounding sphere anywhere near the ray?
+function rayNear(o, d, x, y, z, r, maxT) { const vx = x - o.x, vy = y - o.y, vz = z - o.z, t = vx * d.x + vy * d.y + vz * d.z; return t > -r && t < maxT + r && vx * vx + vy * vy + vz * vz - t * t < r * r; }
+// a fight down the block is a texture, not every round: distant shots share one voice slot
+function npcShotSound(e) {
+  const d2 = e.pos.distanceToSquared(P.pos); if (d2 > 170 * 170) return;
+  if (d2 > 28 * 28 && G.t - SHOTSND.t < .055) return; SHOTSND.t = G.t; AU.farShot(e.pos, !!e.heavyGun);
+}
+// a round nobody will see land: the odds of the exchange, no rays, no tracers, no particles (the street still hears it)
+function farExchange(e, TG, dmg, dist, moving) {
+  const W = e.wst, cov = TG.st && TG.st.crouch ? .22 : 0;
+  const p = clamp(.6 - dist * .0075 - cov - (e.supp || 0) * .3 - (moving ? .12 : 0), .05, .6) / Math.max(.7, (W && W.spread) || 1);
+  if (Math.random() < p) { const hd = Math.random() < .08; tgHurt(TG, dmg, e, hd ? 'head' : 'body', null); }
+  else if (!TG.isCiv && TG !== PLY) { TG.supp = Math.min(1, (TG.supp || 0) + .18); if (TG.fac === 'looter') looterScare(TG, e.pos); else squadGrudge(TG, e, 20); }
+}
 function enemyFire(e, dmg, dist, moving) {
+  if (e.human && !tgOk(e, e.tg)) { e.burst = 0; return; } // the target dropped mid-burst: the rest of it isn't for whoever's behind
+  const TG = e.human ? e.tg : PLY; // monsters only ever shoot at the player
+  e.shotsAt = (e.shotsAt || 0) + 1; e.lastShotT = G.t;
+  if (TG !== PLY) {
+    if (NPCRAY.t !== G.t) { NPCRAY.t = G.t; NPCRAY.n = 0; }
+    const tun = TG.isCiv ? unseenAt(TG.pos.x, TG.pos.z) : !!TG.unseen;
+    if ((e.unseen && tun) || NPCRAY.n >= (G.quality === 'high' ? 12 : 6)) { npcShotSound(e); if ((e.shotsAt % 4) === 1) makeNoise(e.pos, 45, 'eshot', e); farExchange(e, TG, dmg, dist, moving); return; }
+    NPCRAY.n++;
+  }
   const fx = -Math.sin(e.face), fz = -Math.cos(e.face);
   const from = _ef.set(e.pos.x + fx * .5, (e.st.crouch ? 1.0 : 1.38) * e.scale, e.pos.z + fz * .5);
-  const tgt = _efT.set(P.pos.x, P.pos.y + P.eyeH + (P.crouching ? -.25 : -.4), P.pos.z);
-  const pv = Math.hypot(P.vel.x, P.vel.z);
-  const spread = (1.5 + dist * .055 + pv * .55 + (P.slide > 0 ? 2 : 0) + e.supp * 4.5 + (moving ? 1.8 : 0) - (e.possessed ? .6 : 0)) * (P.inCar ? 1.6 : 1) * (e.shotsAt ? 1 : 1.5); // first shots go wide
-  e.shotsAt = (e.shotsAt || 0) + 1;
-  const d = _efD.subVectors(tgt, from).normalize(); const r = Math.sqrt(Math.random()) * spread * Math.PI / 180, a = Math.random() * TAU;
+  let spread;
+  if (TG === PLY) {
+    tgAim(PLY, _efT); const pv = Math.hypot(P.vel.x, P.vel.z);
+    spread = (1.5 + dist * .055 + pv * .55 + (P.slide > 0 ? 2 : 0) + e.supp * 4.5 + (moving ? 1.8 : 0) - (e.possessed ? .6 : 0)) * (P.inCar ? 1.6 : 1) * (e.shotsAt > 1 ? 1 : 1.5); // first shots go wide
+  } else {
+    tgAim(TG, _efT); const tv = TG.vel ? Math.hypot(TG.vel.x, TG.vel.z) : 0;
+    spread = (1.3 + dist * .04 + tv * .45 + e.supp * 4 + (moving ? 1.6 : 0)) * (e.shotsAt > 1 ? 1 : 1.4);
+  }
+  if (e.wst && e.wst.spread) spread *= e.wst.spread;
+  const d = _efD.subVectors(_efT, from).normalize(); const r = Math.sqrt(Math.random()) * spread * Math.PI / 180, a = Math.random() * TAU;
   const right = _efR.set(-d.z, 0, d.x).normalize(), up = _efU.crossVectors(right, d);
   d.addScaledVector(right, Math.cos(a) * Math.tan(r)).addScaledVector(up, Math.sin(a) * Math.tan(r)).normalize();
   // what's in the way?
-  const L = 120; let tHit = L, what = 0, ch = null, civ = null, box = null;
+  const L = 120; let tHit = L, what = 0, ch = null, civ = null, box = null, hitE = null, part = null;
   const wh = rayGrid(from, d, L); if (wh) { tHit = wh.t; what = 1; box = wh.box; _efN.copy(wh.n); }
   const cr = rayCar(from, d, tHit); if (cr && !(P.inCar && cr.car === P.inCar)) { tHit = cr.t; what = 2; ch = cr; }
-  const pt = rayVCapsule(from, d, P.pos.x, P.pos.z, P.pos.y + .1, P.pos.y + (P.crouching ? 1.15 : 1.7), P.inCar ? .9 : .35);
-  if (pt > 0 && pt < tHit) { tHit = pt; what = 3; }
-  for (const c of CIVS) { if (c.dead) continue; const tc = rayVCapsule(from, d, c.pos.x, c.pos.z, .1, 1.7, .32); if (tc > 0 && tc < tHit) { tHit = tc; what = 4; civ = c; } }
-  const end = _efE.copy(from).addScaledVector(d, tHit);
-  tracer(from, end, 0xff6060, 1.3); FXA.emit(from.x, from.y, from.z, 0, 0, 0, .06, .5, .7, COL.spark, 1);
-  AU.farShot(e.pos, !!e.heavyGun); if ((e.shotsAt % 4) === 1) { makeNoise(e.pos, 45, 'eshot'); if (HEAT.level >= 2) trafficPanic(e.pos); }
-  if (what === 3) { if (P.inCar) { carHit(P.inCar, dmg * 2, end, _efN.copy(d).negate(), false); damagePlayer(dmg * .5, e.pos, e); } else damagePlayer(dmg, e.pos, e); return; }
-  if (what === 2) { carHit(ch.car, dmg * 2, end, ch.n, ch.glass); return; }
-  if (what === 4) { civ.hurt(dmg * 2, e); return; }
-  if (what === 1) { _efH.t = tHit; _efH.n = _efN; _efH.box = box; impact(end, _efN, surfOfHit(_efH, end), { size: .14 }); }
+  const pt = G.inside && !e.clubber ? -1 : rayVCapsule(from, d, P.pos.x, P.pos.z, P.pos.y + .1, P.pos.y + (P.crouching ? 1.15 : 1.7), P.inCar ? .9 : .35);
+  if (pt > 0 && pt < tHit && !P.dead) { tHit = pt; what = 3; }
+  for (const o of ENEMIES) { if (o === e || o.dead || !rayNear(from, d, o.pos.x, o.pos.y + 1 * o.scale, o.pos.z, 1.25 * o.scale, tHit)) continue; const h = o.partAt(from, d); if (h && h.t < tHit) { tHit = h.t; what = 5; hitE = o; part = h.part; } }
+  for (const c of CIVS) { if (c.dead || !rayNear(from, d, c.pos.x, .95, c.pos.z, 1.2, tHit)) continue; const tc = rayVCapsule(from, d, c.pos.x, c.pos.z, .1, 1.7, .32); if (tc > 0 && tc < tHit) { tHit = tc; what = 4; civ = c; } }
+  const end = _efE.copy(from).addScaledVector(d, tHit), seen = TG === PLY || !e.unseen || !(TG.isCiv ? unseenAt(TG.pos.x, TG.pos.z) : TG.unseen);
+  if (seen) { tracer(from, end, 0xff6060, 1.3); FXA.emit(from.x, from.y, from.z, 0, 0, 0, .06, .5, .7, COL.spark, 1); }
+  npcShotSound(e); if ((e.shotsAt % 4) === 1) { makeNoise(e.pos, 45, 'eshot', e); if (HEAT.level >= 2) trafficPanic(e.pos); }
+  if (what === 3) { if (P.inCar) { carHit(P.inCar, dmg * 2, end, _efN.copy(d).negate(), false, e); damagePlayer(dmg * .5, e.pos, e); } else damagePlayer(dmg, e.pos, e); return; }
+  if (what === 2) { carHit(ch.car, dmg * 2, end, ch.n, ch.glass, e); }
+  else if (what === 4) { civ.hurt(dmg * 2, e); return; }
+  else if (what === 5) { if (seen && e.camD2 < 60 * 60) burst(FXN, end, 5, 2, .4, .08, .05, COL.blood, 6); hitE.hurt(dmg * (part === 'head' ? 2 : part === 'limb' ? .8 : 1), part, d, e.npcSrc); if (hitE === TG) return; }
+  else if (what === 1 && seen) { _efH.t = tHit; _efH.n = _efN; _efH.box = box; impact(end, _efN, surfOfHit(_efH, end), { size: .14, fx: e.camD2 < 70 * 70, snd: e.camD2 < 50 * 50 }); }
+  // a miss on a fighter still tells them who's shooting
+  if (TG !== PLY && !TG.isCiv && TG !== hitE) { tgAim(TG, _efT); const v = _efT.sub(from), tt = clamp(v.dot(d), 0, tHit); if (v.addScaledVector(d, -tt).lengthSq() < 2.4) { TG.supp = Math.min(1, (TG.supp || 0) + .25); if (TG.fac === 'looter') looterScare(TG, e.pos); else squadGrudge(TG, e, 20); } }
   // near miss: bullet crack past your head (into a wall, or on out into the night)
   const v = _efT.set(P.pos.x - from.x, P.pos.y + P.eyeH - from.y, P.pos.z - from.z); const tt = clamp(v.dot(d), 0, tHit); const miss = v.addScaledVector(d, -tt).length();
-  if (miss < 2.2) { const sp = spatial(e.pos); AU.play('whiz_' + (1 + Math.floor(Math.random() * 2)), { vol: .7, pan: sp.pan }) || AU.nz(.08, 'highpass', 6000, 2500, 1, .3, sp.pan); P.suppressed = Math.min(1, (P.suppressed || 0) + .25); }
+  if (miss < 2.2 && !P.dead) { const sp = spatial(e.pos); AU.play('whiz_' + (1 + Math.floor(Math.random() * 2)), { vol: .7, pan: sp.pan }) || AU.nz(.08, 'highpass', 6000, 2500, 1, .3, sp.pan); P.suppressed = Math.min(1, (P.suppressed || 0) + .25); }
 }
 function civFire(e, c) {
   tracer(_av1.set(e.pos.x, 1.38, e.pos.z), _av2.set(c.pos.x, rand(.9, 1.5), c.pos.z), 0xff6060, 1.2); AU.farShot(e.pos, false); if (Math.random() < .55) c.hurt(18, e);
@@ -318,8 +641,8 @@ function throwMolotov(e, at) {
   const from = e.pos.clone().setY(1.6); const to = at.clone().add(new T.Vector3(rand(-2, 2), 0, rand(-2, 2)));
   const T0 = .95; const v = to.clone().sub(from).divideScalar(T0); v.y = (to.y - from.y + .5 * 9.8 * T0 * T0) / T0;
   const m = new T.Group(); m.add(new T.Mesh(gBox(.08, .22, .08), STD(0x3a6a2a, .2, .1))); const fl = glowSprite(0, .14, 0, lc(0xff8a20), .8, m); m.position.copy(from); scene.add(m);
-  MOLOS.push({ m, v, t: 0 }); e.atk = e.atkDur = .5; AU.swish(false);
-  feed('<b>MOLOTOV</b> · Move!');
+  MOLOS.push({ m, v, t: 0, by: e }); e.atk = e.atkDur = .5; if (e.pos.distanceToSquared(P.pos) < 30 * 30) AU.swish(false);
+  if (at.distanceToSquared(P.pos) < 14 * 14) feed('<b>MOLOTOV</b> · Move!');
 }
 function updateMolotovs(dt) {
   for (let i = MOLOS.length - 1; i >= 0; i--) {
@@ -330,14 +653,14 @@ function updateMolotovs(dt) {
       const s = spatial(p); AU.play('glass_shatter', { vol: .7 * s.vol, pan: s.pan }); AU.play('fire_whoosh', { vol: .8 * s.vol, pan: s.pan }) || AU.nz(.8, 'lowpass', 1200, 200, 1, .5 * s.vol, s.pan);
       const fires = []; for (let k = 0; k < 5; k++) { const f = { p: p.clone().add(new T.Vector3(rand(-1.6, 1.6), .2, rand(-1.6, 1.6))), s: rand(.7, 1.1) }; FIRES.push(f); fires.push(f); }
       const ls = { p: p.clone().setY(1.5), c: new T.Color(0xff6a10), i: 4, d: 16, f: 1, aiFire: 1 }; LS.push(ls);
-      FIREZONES.push({ p, r: 3.2, t: 6.5, fires, ls }); makeNoise(p, 40, 'fire'); HEAT.add(.12);
+      FIREZONES.push({ p, r: 3.2, t: 6.5, fires, ls, src: { dot: 1, by: o.by } }); makeNoise(p, 40, 'fire', o.by); if (p.distanceToSquared(P.pos) < 30 * 30) HEAT.add(.12);
     }
   }
   for (let i = FIREZONES.length - 1; i >= 0; i--) {
     const z = FIREZONES[i]; z.t -= dt;
     if (P.pos.distanceTo(z.p) < z.r && !P.inCar) { damagePlayer(24 * dt, z.p, null); }
-    for (const e of ENEMIES) if (!e.dead && e.pos.distanceTo(z.p) < z.r) e.hurt(30 * dt, null, null, true);
-    for (const c of CIVS) if (!c.dead && c.pos.distanceTo(z.p) < z.r) c.hurt(40 * dt, null);
+    for (const e of ENEMIES) if (!e.dead && e.pos.distanceTo(z.p) < z.r) e.hurt(30 * dt, null, null, z.src);
+    for (const c of CIVS) if (!c.dead && c.pos.distanceTo(z.p) < z.r) c.hurt(40 * dt, z.src.by);
     if (z.t <= 0) { z.fires.forEach(f => { const k = FIRES.indexOf(f); if (k >= 0) FIRES.splice(k, 1); }); z.ls.i = 0; const k = LS.indexOf(z.ls); if (k >= 0) LS.splice(k, 1); FIREZONES.splice(i, 1); } // its light used to stay in LS forever
   }
   updateFrags(dt);
@@ -353,18 +676,19 @@ function fragGet() {
   const led = new T.Mesh(FRAGM.led, NEON(0xff2020)); led.position.y = .066; m.add(led);
   const rm = new T.MeshBasicMaterial({ color: 0xff2a1a, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, blending: T.AdditiveBlending });
   const ring = new T.Mesh(FRAGM.ring, rm); ring.renderOrder = 4; m.visible = ring.visible = false; scene.add(m, ring);
-  const g = { m, led, ring, rm, p: m.position, v: new T.Vector3(), fuse: 0, live: false, owner: null, sq: 0, beepT: 0, pulse: 0, rest: false, touched: false };
+  const g = { m, led, ring, rm, p: m.position, v: new T.Vector3(), fuse: 0, live: false, owner: null, src: { dot: 1, by: null, blast: 1 }, sq: 0, beepT: 0, pulse: 0, rest: false, touched: false };
   FRAGS.push(g); return g;
 }
 const fragLive = sq => { for (const g of FRAGS) if (g.live && g.sq === sq) return true; return false; };
-// throw rules: you're behind cover (lost sight 1.2-9 s) or standing still in the open; 9-30 m; one in the air per squad; no friends at the target
+// throw rules: the target is behind cover (lost sight 1.2-9 s) or standing still in the open; 9-30 m; one in the air per squad; no friends at the target
 function fragTry(e) {
   e.fragCd = .7;
-  const ls = G.t - (e.lastSeen || -99), hiding = !e.seesP && ls > 1.2 && ls < 9, camping = e.seesP && e.reactT <= 0 && HEAT.still > 1.8;
+  const TG = e.tg; if (!TG || TG.isCiv || e.unseen) return;
+  const ls = G.t - (e.lastSeen || -99), hiding = !e.seesT && ls > 1.2 && ls < 9, camping = e.seesT && e.reactT <= 0 && (TG === PLY ? HEAT.still > 1.8 : !!(TG.st && TG.st.crouch && TG.cover));
   if (!(hiding || camping) || e.atk > 0) return;
-  const at = hiding ? e.lastKnown : P.pos, d = Math.hypot(at.x - e.pos.x, at.z - e.pos.z); if (d < 9 || d > 30) return;
+  const at = hiding ? e.lastKnown : TG.pos, d = Math.hypot(at.x - e.pos.x, at.z - e.pos.z); if (d < 9 || d > 30) return;
   const sq = e.sq || 0; if (fragLive(sq) || G.t - (FRAGSQ[sq] || -99) < 5) return;
-  for (const o of ENEMIES) if (o !== e && !o.dead && o.pos.distanceToSquared(at) < 20) return;
+  for (const o of ENEMIES) if (o !== e && !o.dead && o.pos.distanceToSquared(at) < 20 && !hostile(e, o)) return;
   if (!aiLos(_av4.set(e.pos.x, 3.4, e.pos.z), _av5.set(at.x, 1.2, at.z), true)) return; // needs an arc over the cover
   throwFrag(e, at);
 }
@@ -373,9 +697,9 @@ function throwFrag(e, at) {
   g.p.set(e.pos.x - Math.sin(e.face) * .35, 1.7 * e.scale, e.pos.z - Math.cos(e.face) * .35);
   const er = 1 + Math.hypot(at.x - e.pos.x, at.z - e.pos.z) * .05, tx = at.x + rand(-er, er), tz = at.z + rand(-er, er), dx = tx - g.p.x, dz = tz - g.p.z;
   const T0 = clamp(Math.hypot(dx, dz) / 13, .75, 1.45); g.v.set(dx / T0, (.12 - g.p.y + 4.9 * T0 * T0) / T0, dz / T0);
-  g.fuse = 2.5; g.live = true; g.rest = false; g.touched = false; g.owner = e; g.sq = e.sq || 0; g.beepT = .2; g.pulse = 0; g.m.visible = true; g.ring.visible = false;
-  e.atk = e.atkDur = .5; e.frags--; e.fragCd = rand(10, 16); FRAGSQ[g.sq] = G.t; AU.swish(false);
-  if (G.t - _fragFeedT > 6) { _fragFeedT = G.t; feed('<b>GRENADE</b> · Get clear!'); }
+  g.fuse = 2.5; g.live = true; g.rest = false; g.touched = false; g.owner = e; g.src.by = e; g.sq = e.sq || 0; g.beepT = .2; g.pulse = 0; g.m.visible = true; g.ring.visible = false;
+  e.atk = e.atkDur = .5; e.frags--; e.fragCd = rand(10, 16); FRAGSQ[g.sq] = G.t; if (e.pos.distanceToSquared(P.pos) < 30 * 30) AU.swish(false);
+  if (G.t - _fragFeedT > 6 && Math.hypot(at.x - P.pos.x, at.z - P.pos.z) < 16) { _fragFeedT = G.t; feed('<b>GRENADE</b> · Get clear!'); }
   return true;
 }
 function updateFrags(dt) {
@@ -421,11 +745,11 @@ function fragBlast(g) {
   }
   for (const e of ENEMIES) {
     if (e.dead) continue; const dx = e.pos.x - p.x, dz = e.pos.z - p.z, d = Math.hypot(dx, dz); if (d > FRAG_R || !aiLos(c0, _av3.set(e.pos.x, 1, e.pos.z))) continue;
-    const k = fall(d); e.hurt(15 + 200 * k, 'body', _av4.set(dx, 0, dz).normalize(), true); if (!e.dead && d > .1) { e.vel.x += dx / d * 8 * k; e.vel.z += dz / d * 8 * k; }
+    const k = fall(d); e.hurt(15 + 200 * k, 'body', _av4.set(dx, 0, dz).normalize(), g.src); if (!e.dead && d > .1) { e.vel.x += dx / d * 8 * k; e.vel.z += dz / d * 8 * k; }
   }
   for (const c of CIVS) { if (c.dead) continue; const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z); if (d < FRAG_R && aiLos(c0, _av3.set(c.pos.x, 1, c.pos.z))) c.hurt(20 + 160 * fall(d), g.owner); }
-  for (const c of CARS) { if (c.gone || c === P.inCar) continue; const dx = c.pos.x - p.x, dz = c.pos.z - p.z, d = Math.hypot(dx, dz); if (d < 6) carHit(c, 280 * (1 - d / 6), _av4.set(c.pos.x - dx * .4, .8, c.pos.z - dz * .4), _av5.set(-dx, 0, -dz).normalize(), false); }
-  HEAT.add(.25); makeNoise(p, 55, 'blast'); trafficPanic(p);
+  for (const c of CARS) { if (c.gone || c === P.inCar) continue; const dx = c.pos.x - p.x, dz = c.pos.z - p.z, d = Math.hypot(dx, dz); if (d < 6) carHit(c, 280 * (1 - d / 6), _av4.set(c.pos.x - dx * .4, .8, c.pos.z - dz * .4), _av5.set(-dx, 0, -dz).normalize(), false, g.owner); }
+  if (pd < 30 || (g.owner && g.owner.tg === PLY)) HEAT.add(.25); makeNoise(p, 55, 'blast', g.owner); trafficPanic(p);
 }
 
 /* ---------- civilians: crowds that walk the sidewalks in groups ---------- */
@@ -433,7 +757,7 @@ const CIVS = [], GROUPS = [], CIVHID = [], CIVCAM = { x: 0, z: 0, fx: 0, fz: -1 
 const CIV_RIGS = ['civilian_lo', 'suit_lo', 'male_lo', 'female_lo', 'civilian_lo', 'female_lo'];
 const CLOTHES = [0x1c1c22, 0x2a2f3a, 0x3a2a24, 0x5a5048, 0x6a1a1a, 0x1a3a5a, 0x2a4a2a, 0x8a8478, 0xa89a7a, 0x4a3a5a, 0x101014, 0x7a5a2a];
 const HAIRN = [0x0e0c0c, 0x2a1a10, 0x4a2a16, 0x8a6a3a, 0xc8b080, 0x6a6a6a];
-let _scrT = -9;
+let _scrT = -9, _civFeedT = -99;
 // one scream at a time across the whole crowd; the ambience engine voices it when it's there
 function civScream(pos) {
   if (G.t - _scrT < .9) return; _scrT = G.t;
@@ -443,7 +767,7 @@ function civScream(pos) {
 class Civ {
   constructor(x, z, grp, slot) {
     this.pos = new T.Vector3(x, 0, z); this.vel = new T.Vector3(); this.tv = new T.Vector3(); this.threat = new T.Vector3(); this.goal = new T.Vector3(); this.dir = new T.Vector3();
-    this.face = Math.random() * TAU; this.hp = 60; this.dead = false; this.deadT = 0; this.t = Math.random() * 9; this.gone = false; this.scared = false;
+    this.face = Math.random() * TAU; this.hp = 60; this.maxHp = 60; this.dead = false; this.deadT = 0; this.t = Math.random() * 9; this.gone = false; this.scared = false; this.isCiv = true;
     this.goalK = 0; this.goalT = -9; this.ginX = 0; this.ginZ = 0; this.hideCar = null; this.fade = 0; this.fm = null; this.pushT = 0;
     this.mode = 'walk'; this.st = { speed: 0, phase: 0, hold: 'none', t: 0, attack: 0, flinch: 0, death: 0, crouch: 0 };
     this.grp = grp || null; this.slot = slot || 0; this.pace = rand(.92, 1.08);
@@ -507,7 +831,7 @@ class Civ {
       if (this.fm) for (const f of this.fm) { f.m.opacity = f.o; f.m.transparent = f.t; } // shot in the doorway
       decal(_av3.set(this.pos.x, .02, this.pos.z), _avUp, rand(1.4, 2.2), splatTex, 0x5a0010);
       if (src === 'player') { addScore(-250, 'CIVILIAN DOWN'); flashBanner('CIVILIAN DOWN', 'That one was a person', 1.4); P.civKills = (P.civKills || 0) + 1; HEAT.add(1); }
-      else if (src && src.type) feed(`<b>${ET[src.type].name}</b> · killed a civilian`);
+      else if (src && src.type && G.t - _civFeedT > 8 && this.pos.distanceToSquared(P.pos) < 60 * 60) { _civFeedT = G.t; feed(`<b>${npcName(src)}</b> · killed a civilian`); }
       for (const c of CIVS) if (!c.dead && c !== this && c.pos.distanceToSquared(this.pos) < 400) c.panic(this.pos); // a body hits the ground: everyone near runs
     }
   }
@@ -516,7 +840,7 @@ class Civ {
     this.t += dt; const d2p = this.pos.distanceToSquared(P.pos), far = d2p > 45 * 45;
     if (this.dead) { this.deadT += dt; this.st.death = this.deadT * 2.2; if (this.R.glb && this.deadT < 5) animGLB(this.R, this.st, dt); else if (!this.R.glb) animRig(this.R, this.st, dt); this.sync(); return; }
     // threats: nearby awake monsters, anyone shooting is handled by noise events
-    if (this.mode === 'walk' && (this.chk = (this.chk || 0) - dt) <= 0) { this.chk = .4; for (const e of ENEMIES) if (!e.dead && e.mode !== 'disguise' && e.pos.distanceToSquared(this.pos) < 14 * 14) { this.panic(e.pos); break; } }
+    if (this.mode === 'walk' && (this.chk = (this.chk || 0) - dt) <= 0) { this.chk = .4; for (const e of ENEMIES) if (!e.dead && e.pos.distanceToSquared(this.pos) < 14 * 14 && scaresCivs(e)) { this.panic(e.pos); break; } }
     const tv = this.tv.set(0, 0, 0); let faceTo = null;
     if (this.mode === 'walk' && this.grp) {
       const g = this.grp, tgt = g.slotPos(this.slot, _av3);
@@ -565,6 +889,7 @@ class Civ {
     this.st.speed = sp; this.st.hold = this.mode === 'cower' || this.mode === 'duck' ? 'plead' : 'none'; this.st.t = this.t;
     this.st.flinch = Math.max(0, this.st.flinch - dt * 3);
     // animation LOD: near every frame, mid every few frames, far rarely, behind the camera hardly at all
+    if (this.R.pivot) { const cx = this.pos.x - camera.position.x, cz = this.pos.z - camera.position.z; this.R.pivot.visible = bodyInView(this.pos.x, this.pos.z, cx * cx + cz * cz); }
     this.aT = (this.aT || 0) + dt; let every = d2p < 12 * 12 ? 0 : d2p < 22 * 22 ? .033 : d2p < 45 * 45 ? .066 : .2;
     if (d2p > 64 && (this.pos.x - CIVCAM.x) * CIVCAM.fx + (this.pos.z - CIVCAM.z) * CIVCAM.fz < -3) every = .5;
     if (this.aT >= every) { if (this.R.glb) animGLB(this.R, this.st, this.aT); else animRig(this.R, this.st, this.aT); this.aT = 0; }
@@ -666,6 +991,7 @@ function aiNightReset() {
   CIVHID.length = 0; for (const c of CARS) c._hx = 0;
   for (let i = LS.length - 1; i >= 0; i--) if (LS[i].aiFire) LS.splice(i, 1);
   if (typeof STORY !== 'undefined') STORY.wave = 0;
+  SQLEAD.clear(); if (typeof SPAWN !== 'undefined') SPAWN.posts.length = 0;
   if (typeof trafficNightReset === 'function') trafficNightReset();
   if (typeof interiorsReset === 'function') interiorsReset();
 }

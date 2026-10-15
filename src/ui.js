@@ -21,7 +21,8 @@ function pulse(el, cls) { if (typeof el === 'string') el = $(el); if (!el) retur
     'Cars run. Running things over counts.',
     'Augment, in Settings, sets how much of the net layer you see over the city.',
     IS_TOUCH ? 'Push the left stick to the edge to sprint. Hold it there for a tac sprint.' : 'Double-tap Shift for a tac sprint. Press C mid-sprint to slide.',
-    IS_TOUCH ? 'Drag on the FIRE button to keep aiming while you shoot.' : 'Scoped in, hold Shift to steady your breath.',
+    IS_TOUCH ? 'Every button on the right steers too: press it, then slide your thumb to keep aiming.' : 'Scoped in, hold Shift to steady your breath.',
+    IS_TOUCH ? 'Tap your weapon, top right, to swap guns. Hold it to draw your blade.' : 'Q swaps guns. 3 draws your blade.',
   ];
   for (let i = tips.length - 1; i > 1; i--) { const j = 1 + Math.floor(Math.random() * i); const t = tips[i]; tips[i] = tips[j]; tips[j] = t; }
   const expect = Math.max(24, +store('ldN') || 0); // the request count of the last boot keeps the bar honest before every fetch is issued
@@ -103,16 +104,24 @@ function syncChips() {
   document.querySelectorAll('[data-m]').forEach(b => b.classList.toggle('sel', (+b.dataset.m === 1) === G.music));
   document.querySelectorAll('[data-aa]').forEach(b => b.classList.toggle('sel', (b.dataset.aa === '1') === !!G.aimAssist));
   document.querySelectorAll('[data-inv]').forEach(b => b.classList.toggle('sel', (b.dataset.inv === '1') === !!G.invertY));
-  document.querySelectorAll('.chip[data-q],.chip[data-n],.chip[data-s],.chip[data-m],.chip[data-aa],.chip[data-inv]').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('sel')));
+  document.querySelectorAll('[data-bsz]').forEach(b => b.classList.toggle('sel', b.dataset.bsz === G.btnSize));
+  document.querySelectorAll('[data-lf]').forEach(b => b.classList.toggle('sel', (b.dataset.lf === '1') === !!G.leftFire));
+  document.querySelectorAll('[data-sn]').forEach(b => b.classList.toggle('sel', b.dataset.sn === G.supernatural));
+  document.querySelectorAll('.chip[data-q],.chip[data-n],.chip[data-s],.chip[data-m],.chip[data-aa],.chip[data-inv],.chip[data-bsz],.chip[data-lf],.chip[data-sn]').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('sel')));
 }
 function setupMenus() {
-  if (IS_TOUCH) $('keysHelp').textContent = 'Left thumb: move (push to the edge to sprint) · Right thumb: look · FIRE buttons let you look while shooting · AIM toggles sights · CAM swaps first / third person · tap a gun on the wall to open its class.';
+  if (IS_TOUCH) $('keysHelp').textContent = 'Left thumb: move (push to the edge to sprint) · Right thumb: look anywhere on the right, and every button there steers once you slide · AIM toggles sights · tap your weapon (top right) to swap, hold it for the blade · camera and shoulder are in Pause · tap a gun on the wall to open its class.';
   document.querySelectorAll('[data-q]').forEach(b => b.onclick = () => { G.quality = b.dataset.q; store('q', G.quality); applyPixelRatio(); onResize(); postSize(); syncChips(); });
   document.querySelectorAll('[data-n]').forEach(b => b.onclick = () => { G.nightMin = +b.dataset.n; store('n', G.nightMin); syncChips(); });
   document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { G.sens = +b.dataset.s; store('s', G.sens); syncChips(); });
   document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { AU.setMusic(b.dataset.m === '1'); syncChips(); });
   document.querySelectorAll('[data-aa]').forEach(b => b.onclick = () => { setAimAssist(b.dataset.aa === '1'); syncChips(); });
   document.querySelectorAll('[data-inv]').forEach(b => b.onclick = () => { setInvertY(b.dataset.inv === '1'); syncChips(); });
+  document.querySelectorAll('[data-bsz]').forEach(b => b.onclick = () => { setBtnSize(b.dataset.bsz); syncChips(); });
+  document.querySelectorAll('[data-lf]').forEach(b => b.onclick = () => { setLeftFire(b.dataset.lf === '1'); syncChips(); });
+  // monsters: actors.js owns the dial (it also reweights the spawns at once); the row only shows once it exists
+  if (typeof setSupernatural === 'function') document.querySelectorAll('[data-sn]').forEach(b => b.onclick = () => { setSupernatural(b.dataset.sn); syncChips(); });
+  else $('rowSn').hidden = true;
   syncChips();
   $('goChar').onclick = () => { AU.init(); openChar(); };
   $('goSet').onclick = () => { AU.init(); openSettings('title'); };
@@ -130,6 +139,7 @@ function setupMenus() {
   // pause
   $('pResume').onclick = resume; $('pQuit').onclick = () => { location.hash = ''; quitToTitle(); };
   $('pCam').onclick = () => toggleCam(); $('pLoad').onclick = openLoadGrid;
+  $('pShoulder').onclick = swapShoulder; $('pShoulder').textContent = 'Shoulder: ' + (camState.pref > 0 ? 'right' : 'left');
   $('loadBack').onclick = () => { show('mLoad', false); show('mPause', true); G.state = 'paused'; }; // was left in 'pauseload', so Esc and photo mode stopped working
   $('pSet').onclick = () => openSettings('pause'); $('pPhoto').onclick = enterPhoto;
   $('endAgain').onclick = () => { show('mEnd', false); document.body.classList.remove('inMenu'); startNight(); }; $('endTitleBtn').onclick = () => { show('mEnd', false); quitToTitle(); };
@@ -196,6 +206,7 @@ function setupSettings() {
   augSlider('sAug', 'vAug');
   // 54 is the "Default" notch: the camera mode picks its own FOV
   mkSlider($('sFov'), { min: 54, max: 95, step: 1, get: () => G.fov ? clamp(Math.round(G.fov), 55, 95) : 54, set: v => setFov(v <= 54 ? 0 : v), fmt: v => v <= 54 ? 'Default' : v + '°', out: $('vFov') });
+  mkSlider($('sLook'), { min: 50, max: 200, step: 5, get: () => Math.round(G.lookSpd * 100), set: v => setLookSpd(v / 100), fmt: v => v + '%', out: $('vLook') });
   $('setBack').onclick = closeSettings;
 }
 function openSettings(from) {
@@ -445,7 +456,9 @@ function drawMini() {
     x.strokeStyle = 'rgba(243,230,0,.5)'; x.lineWidth = 1.2 * d; x.beginPath(); x.moveTo((120 - px) * sc, -pz * sc); x.lineTo((120 - px) * sc, (240 - pz) * sc); x.stroke();
     const cs = 3 * d; x.fillStyle = 'rgba(196,200,210,.5)'; for (const c2 of CARS) x.fillRect((c2.pos.x - px) * sc - cs / 2, (c2.pos.z - pz) * sc - cs / 2, cs, cs);
     const ps = 4.5 * d; x.fillStyle = '#3dff9a'; for (const p of PICKS) x.fillRect((p.pos.x - px) * sc - ps / 2, (p.pos.z - pz) * sc - ps / 2, ps, ps);
-    for (const e of ENEMIES) { if (e.dead || !e.R || !e.R.root.visible) continue; x.fillStyle = e.mode === 'disguise' ? ENEMY_DOT.disguise : e.possessed ? ENEMY_DOT.poss : ENEMY_DOT.base; x.beginPath(); x.arc((e.pos.x - px) * sc, (e.pos.z - pz) * sc, 2.8 * d, 0, TAU); x.fill(); }
+    // actors.js colours each NPC: red if it is after you, a muted faction colour if not, grey in disguise
+    const dotC = typeof npcDotColor === 'function' ? npcDotColor : null;
+    for (const e of ENEMIES) { if (e.dead || !e.R || !e.R.root.visible) continue; x.fillStyle = e.mode === 'disguise' ? (dotC ? dotC(e) : ENEMY_DOT.disguise) : e.possessed ? ENEMY_DOT.poss : dotC ? dotC(e) : ENEMY_DOT.base; x.beginPath(); x.arc((e.pos.x - px) * sc, (e.pos.z - pz) * sc, 2.8 * d, 0, TAU); x.fill(); }
     x.fillStyle = '#ffb000'; for (const w of WISPS) { x.beginPath(); x.arc((w.pos.x - px) * sc, (w.pos.z - pz) * sc, 2.3 * d, 0, TAU); x.fill(); }
     if (STORY.beacon && STORY.beacon.visible) { const bp = STORY.beacon.position; x.strokeStyle = '#3dff9a'; x.lineWidth = 2 * d; x.beginPath(); x.arc((bp.x - px) * sc, (bp.z - pz) * sc, (6 + Math.sin(G.t * 5) * 1.5) * d, 0, TAU); x.stroke(); }
   }

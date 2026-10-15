@@ -207,7 +207,8 @@ function carInit(c) {
   const mat = DEC.carHole || (DEC.carHole = new T.MeshBasicMaterial({ map: decalTex('carhole'), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }));
   c.dm.holes = new T.InstancedMesh(new T.PlaneGeometry(1, 1), mat, 40); c.dm.holes.count = 0; c.dm.holes.frustumCulled = false; c.g.add(c.dm.holes); c.dm.hi = 0;
 }
-function carHit(c, dmg, p, n, glass) {
+// by: who fired (an enemy), or nothing for the player's rounds
+function carHit(c, dmg, p, n, glass, by) {
   carInit(c); if (c.dead) { impact(p, n, 'metal', { snd: true }); return; }
   // local-space hole that rides with the car
   const inv = new T.Matrix4().copy(c.g.matrixWorld).invert(); const lp = p.clone().applyMatrix4(inv); const ln = n.clone().applyAxisAngle(new T.Vector3(0, 1, 0), -c.h);
@@ -219,7 +220,7 @@ function carHit(c, dmg, p, n, glass) {
     if (c.dm.glassHits >= 2 && c.dm.glassMesh) { c.dm.glassGone = true; c.dm.glassMesh.material = new T.MeshStandardMaterial({ color: lc(0x0a0c10), metalness: .6, roughness: .6, transparent: true, opacity: .35 }); burst(FXN, p, 30, 4, .9, .05, .06, C(0xd8f0ff), 11, .2); AU.play('glass_shatter', { vol: .8 * sp.vol, pan: sp.pan }) || AU.nz(.5, 'highpass', 4000, 9000, 1, .4 * sp.vol, sp.pan); }
     else impact(p, n, 'glass', { fx: true });
   } else impact(p, n, 'metal', { fx: true, size: .001 });
-  c.dm.hp -= dmg; c.lastHitBy = 'player';
+  c.dm.hp -= dmg; c.lastHitBy = by || (typeof PLY !== 'undefined' ? PLY : 'player');
   if (c.dm.hp <= 0) carExplode(c);
 }
 function carExplode(c) {
@@ -229,18 +230,19 @@ function carExplode(c) {
   burst(FXA, p, 70, 9, 1.4, .5, .02, COL.ember, -1, .4, 1, 2); burst(FXA, p.clone().setY(1.6), 26, 3.5, .7, 1.6, .6, COL.fire, -2, .6, 1, 2.5); burst(FXN, p, 50, 5, 2.2, .9, 1.4, COL.smoke, -.6, .5, .9, 3);
   flashLight.position.copy(p).setY(3); flashLight.color.set(0xff7a20); flashLight.intensity = 14; G.flashT = .25;
   // blast damage
-  for (const e of ENEMIES) { if (e.dead) continue; const d = e.pos.distanceTo(c.pos); if (d < 9) e.hurt(lerp(340, 20, d / 9), 'body', e.pos.clone().sub(c.pos).normalize(), { big: true, w: null, dist: 0, blast: true }); if (d < 9) e.vel.add(e.pos.clone().sub(c.pos).setY(0).normalize().multiplyScalar(12 * (1 - d / 9))); }
-  for (const cv of CIVS) { if (cv.dead) continue; const d = cv.pos.distanceTo(c.pos); if (d < 8) cv.hurt(400, null, 'blast'); }
+  const byP = c.lastHitBy === 'player' || (typeof PLY !== 'undefined' && c.lastHitBy === PLY), src = { big: true, w: null, dist: 0, blast: true, by: byP ? PLY : (c.lastHitBy && c.lastHitBy.pos ? c.lastHitBy : null) };
+  for (const e of ENEMIES) { if (e.dead) continue; const d = e.pos.distanceTo(c.pos); if (d < 9) e.hurt(lerp(340, 20, d / 9), 'body', e.pos.clone().sub(c.pos).normalize(), src); if (d < 9) e.vel.add(e.pos.clone().sub(c.pos).setY(0).normalize().multiplyScalar(12 * (1 - d / 9))); }
+  for (const cv of CIVS) { if (cv.dead) continue; const d = cv.pos.distanceTo(c.pos); if (d < 8) cv.hurt(400, byP ? null : src.by); }
   const pd = P.pos.distanceTo(c.pos);
   if (P.inCar === c) { exitCar(); damagePlayer(90, c.pos, null); } else if (pd < 9) damagePlayer(lerp(110, 8, pd / 9), c.pos, null);
-  for (const o of CARS) if (o !== c && !o.dead && o.pos.distanceTo(c.pos) < 7) { carInit(o); o.dm.hp -= 200 * (1 - o.pos.distanceTo(c.pos) / 7); if (o.dm.hp <= 0) setTimeout(() => carExplode(o), rand(250, 700)); }
+  for (const o of CARS) if (o !== c && !o.dead && o.pos.distanceTo(c.pos) < 7) { carInit(o); o.dm.hp -= 200 * (1 - o.pos.distanceTo(c.pos) / 7); o.lastHitBy = c.lastHitBy; if (o.dm.hp <= 0) setTimeout(() => carExplode(o), rand(250, 700)); }
   // wreck: burnt shell, lights out, a hop and a burning hulk
   if (c.dm.bodyMat) { c.dm.bodyMat.color.set(0x0c0a0a); c.dm.bodyMat.metalness = .3; c.dm.bodyMat.roughness = .9; }
   c.dm.hidden = []; c.g.traverse(o => { if (o.isMesh && o.material && o.material.isMeshBasicMaterial && o !== c.dm.holes && o.visible) { o.visible = false; c.dm.hidden.push(o); } });
   if (c.dm.glassMesh) c.dm.glassMesh.visible = false;
   c.hopV = 6.5; c.spin = rand(-1.5, 1.5); c.speed = 0; c.occ = false;
   c.fire = { p: c.pos.clone().setY(1.2), s: 1.4 }; FIRES.push(c.fire); c.fireLS = { p: c.pos.clone().setY(2.2), c: new T.Color(0xff6a10), i: 4, d: 20, f: 1 }; LS.push(c.fireLS);
-  addScore(150, 'VEHICLE DESTROYED');
+  if (byP) addScore(150, 'VEHICLE DESTROYED');
 }
 // per-frame vehicle damage state: smoke → fire → hop after the blast
 const _hood = new T.Vector3(), SMOKE_K = C(0x1a1a1a), SMOKE_G = C(0x8a8a90);
@@ -360,7 +362,7 @@ function resetCombat() {
     (D.hidden || []).forEach(o => o.visible = true); D.hidden = [];
     D.holes.count = 0; D.hi = 0; D.hp = D.max; D.glassGone = false; D.glassHits = 0;
     if (c.fire) { _rmFire(c.fire); c.fire = null; } if (c.hoodFire) { _rmFire(c.hoodFire); c.hoodFire = null; } if (c.fireLS) { const li = LS.indexOf(c.fireLS); if (li >= 0) LS.splice(li, 1); c.fireLS = null; } // don't leave dead lights in the pool's candidate list
-    c.dead = false; c.hopV = undefined; c.spin = 0; c.g.position.y = 0;
+    c.dead = false; c.hopV = undefined; c.spin = 0; c.g.position.y = 0; c.lastHitBy = null;
   }
   for (const k in DEC) if (DEC[k].im) { DEC[k].im.count = 0; DEC[k].i = 0; }
   MAGS.forEach(g => scene.remove(g.m)); MAGS.length = 0;

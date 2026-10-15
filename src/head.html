@@ -116,33 +116,45 @@ button:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
 #scope{position:fixed;inset:0;z-index:5;pointer-events:none;opacity:0}
 #scope canvas{width:100%;height:100%}
 
-/* ---------- touch controls: iPhone landscape (844x390, 667x375). Thumb clusters in the bottom corners, every target >= 44 px with
-   >= 3 px between circles, all offsets inside the notch / home-indicator insets. No backdrop blur: it re-filters the canvas every frame. ---------- */
+/* ---------- touch controls: iPhone landscape (667x375 to 932x430). One thumb cluster in the bottom-right quadrant: FIRE, then
+   AIM, CROUCH and JUMP around it, RELOAD and MELEE outside, so the right half above it is all look. Every target >= 48 px with
+   >= 8 px between them at all three sizes (--bs .9 / 1 / 1.12, Settings > Button size), offsets inside the notch and
+   home-indicator insets. Each button sets its diameter and edge offsets (--d --x --y) and .k scales them; --cw is the cluster's
+   width, which ACT and the banner keep clear of. No backdrop blur: it re-filters the canvas every frame. ---------- */
+body.touch{--bs:1;--cw:calc(252px*var(--bs))}
+body.touch.drive{--cw:calc(106px*var(--bs))}
 #touch{position:fixed;inset:0;z-index:7;pointer-events:none}
-#touch .tb{position:absolute;pointer-events:auto;border-radius:50%;background:rgba(10,10,12,.34);border:1.5px solid rgba(255,255,255,.34);display:grid;place-items:center;font-size:10px;letter-spacing:.1em;font-weight:700;color:var(--ink);text-shadow:0 1px 2px rgba(0,0,0,.8);touch-action:none}
+#touch .tb{position:absolute;pointer-events:auto;box-sizing:border-box;border-radius:50%;background:rgba(10,10,12,.34);border:1.5px solid rgba(255,255,255,.34);display:grid;place-items:center;font-size:calc(10px*var(--bs));letter-spacing:.08em;font-weight:700;color:var(--ink);text-shadow:0 1px 2px rgba(0,0,0,.8);touch-action:none}
 #touch .tb.on{background:rgba(255,31,61,.42);border-color:var(--blood)}
-#bFire{width:80px;height:80px;right:calc(16px + var(--sr));bottom:calc(22px + var(--sb));border:2px solid var(--blood)!important;font-size:12px}
-#bFire2{width:60px;height:60px;left:calc(22px + var(--sl));bottom:calc(140px + var(--sb));border:2px solid var(--blood)!important}
-#bAds{width:58px;height:58px;right:calc(112px + var(--sr));bottom:calc(18px + var(--sb))}
-#bJump{width:54px;height:54px;right:calc(20px + var(--sr));bottom:calc(118px + var(--sb))}
-#bCrouch{width:54px;height:54px;right:calc(92px + var(--sr));bottom:calc(92px + var(--sb))}
-#bReload{width:48px;height:48px;right:calc(168px + var(--sr));bottom:calc(92px + var(--sb))}
-#bMelee{width:48px;height:48px;right:calc(196px + var(--sr));bottom:calc(22px + var(--sb))}
-#bSwap{width:48px;height:48px;right:calc(150px + var(--sr));bottom:calc(162px + var(--sb))}
-#bCam{width:44px;height:44px;right:calc(24px + var(--sr));bottom:calc(196px + var(--sb))}
-#bAct{width:auto!important;min-width:132px;height:44px;border-radius:4px!important;padding:0 18px;left:50%;transform:translateX(-50%);bottom:calc(16px + var(--sb));border-color:var(--volt)!important;color:var(--volt)!important;background:rgba(10,10,12,.66)!important;font-size:12px!important}
-#bPause{width:44px;height:44px;right:calc(14px + var(--sr));top:calc(10px + var(--st));border-radius:8px!important;font-size:12px!important}
+#touch .k{width:calc(var(--d)*var(--bs));height:calc(var(--d)*var(--bs));right:calc(var(--x)*var(--bs) + var(--sr));bottom:calc(var(--y)*var(--bs) + var(--sb))}
+#bFire{--d:84px;--x:22px;--y:24px;border:2px solid var(--blood)!important;font-size:calc(13px*var(--bs))!important}
+#bAds{--d:60px;--x:118px;--y:24px}
+#bCrouch{--d:56px;--x:100px;--y:92px}
+#bJump{--d:56px;--x:38px;--y:118px}
+#bReload{--d:54px;--x:185px;--y:83px}
+#bMelee{--d:54px;--x:197px;--y:17px}
+body.drive #bJump{--d:84px;--x:22px;--y:24px;font-size:calc(13px*var(--bs))}  /* at the wheel: BRAKE where FIRE was, the rest put away */
+body.drive #bFire,body.drive #bFire2,body.drive #bAds,body.drive #bCrouch,body.drive #bReload,body.drive #bMelee,body.touch.drive #hBR{display:none}
+#bFire2{width:calc(64px*var(--bs));height:calc(64px*var(--bs));left:calc(24px + var(--sl));bottom:calc(84px + var(--sb));border:2px solid var(--blood)!important}  /* Settings > Left fire */
+body:not(.lfire) #bFire2{display:none}
+#bAct{width:auto!important;min-width:96px;max-width:168px;min-height:48px;border-radius:4px!important;padding:5px 14px;right:calc(var(--cw) + 14px + var(--sr));bottom:calc(12px + var(--sb));border-color:var(--volt)!important;color:var(--volt)!important;background:rgba(10,10,12,.66)!important;font-size:11px!important;line-height:1.15;text-align:center;text-wrap:balance}  /* beside the cluster, two lines for the long labels */
+#bPause{width:48px;height:48px;right:calc(14px + var(--sr));top:calc(10px + var(--st));border-radius:8px!important;font-size:12px!important}
 #joy{position:absolute;width:120px;height:120px;margin:-60px 0 0 -60px;border-radius:50%;border:1.5px solid rgba(255,255,255,.34);background:rgba(255,255,255,.05);opacity:0;pointer-events:none}
 #knob{position:absolute;left:50%;top:50%;width:48px;height:48px;margin:-24px 0 0 -24px;border-radius:50%;background:rgba(255,255,255,.24);border:1.5px solid rgba(255,255,255,.7)}
-body.touch #hTR{right:calc(70px + var(--sr))}
-body.touch #hBR{bottom:auto;top:calc(62px + var(--st));right:calc(16px + var(--sr))}
+body.touch #hTR{right:calc(72px + var(--sr))}
+/* the weapon panel is the swap on touch (tap: other gun, hold: blade), so it gets a frame and a 48 px target */
+body.touch #hBR{bottom:auto;top:calc(68px + var(--st));right:calc(14px + var(--sr));pointer-events:auto;touch-action:none;box-sizing:border-box;min-width:104px;min-height:48px;padding:5px 10px 5px 12px;border:1px solid var(--edge2);border-radius:8px;background:rgba(8,8,10,.34)}
+body.touch #hBR.on{background:rgba(255,31,61,.3);border-color:var(--blood)}
+body.touch #wName:after{content:" \21C4";color:var(--volt);letter-spacing:0}
 body.touch #ammo{font-size:28px}
 body.touch #wName{font-size:10px}
 body.touch #mini{width:84px;height:84px}
 body.touch #slots{display:none}
 body.touch #prompt{display:none}  /* the ACT button carries the label on touch */
-body.touch #banner{top:calc(50% + 30px);left:50%;right:auto;width:40vw;padding:0;transform:translateX(-50%)}  /* under the crosshair, above ACT, between the thumb clusters */
-body.touch #banner h2{font-size:clamp(20px,4vw,30px)}
+/* under the crosshair and above ACT; on the narrowest phones it slides left just enough to clear the cluster */
+body.touch #banner{top:calc(50% + 18px);left:min(50%,calc(82% - var(--cw) - 12px - var(--sr)));right:auto;width:36%;padding:0;transform:translateX(-50%)}
+body.touch #banner h2{font-size:clamp(18px,3.2vw,24px)}
+body.touch #banner p{letter-spacing:.16em}
 body:not(.touch) #touch{display:none}
 /* story.js broadcast: below the menus, out of the way of the HUD corners, hidden in menus and photo mode */
 #bcast{z-index:8!important;top:calc(var(--st) + 92px)!important;box-sizing:border-box;width:min(560px,86vw);min-height:4.4em}  /* a fixed frame: the text types into it instead of the box growing and re-centring */
@@ -253,7 +265,8 @@ body.touch .swatch{width:44px;height:44px}
 .setLab span{font-size:11px;line-height:1.3;color:var(--dim)}
 .setRow output{font:13px var(--f-mono);color:var(--ink);flex:0 0 64px;text-align:right}
 .chips{display:flex;gap:6px;flex-wrap:wrap}
-body:not(.touch) #rowAA{display:none}
+body:not(.touch) .tOnly,body.touch .dOnly{display:none}
+.setSub{display:flex;align-items:flex-end;min-height:22px;padding-top:6px;border-top:1px solid var(--edge)}
 .sld{position:relative;flex:1 1 auto;min-width:110px;height:44px;cursor:pointer;touch-action:none;outline:none}
 .sld i{position:absolute;left:13px;right:13px;top:50%;height:4px;margin-top:-2px;background:rgba(255,255,255,.18)}
 .sld b{position:absolute;left:0;top:0;bottom:0;background:var(--volt)}
@@ -315,12 +328,12 @@ body.phHidden #photoBar{opacity:0;pointer-events:none}
 @media (max-height:500px){
   #mTitle .lede{font-size:13px;line-height:1.45;max-width:62ch}#mTitle .col{gap:10px}h1.title{font-size:clamp(40px,15vh,120px)}
   body.touch #keysHelp{display:none}
-  #mPause .glass{padding:16px 18px}.pGrid{grid-template-columns:1fr 1fr}
+  #mPause .glass{padding:16px 18px}.pGrid{grid-template-columns:1fr 1fr}.pGrid #pResume{grid-column:1/-1}
   #mEnd .glass{padding:16px 20px;gap:6px}#mEnd .lede{margin:2px 0;font-size:13px}.endStats{grid-template-columns:repeat(auto-fill,minmax(104px,1fr));gap:6px 12px}.endStats b{font-size:19px}.endStats span{font-size:10px}
   .ldMark{font-size:clamp(40px,15vh,80px)}
 }
 body.touch #feed{position:fixed;left:calc(14px + var(--sl));top:calc(104px + var(--st));align-items:flex-start;margin:0;gap:2px}
-body.touch #feed div{border-right:0;border-left:2px solid var(--blood);max-width:min(220px,27vw);white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.25}  /* two lines: the district or kill tag is the part that matters */
+body.touch #feed div{box-sizing:border-box;border-right:0;border-left:2px solid var(--blood);max-width:min(220px,27vw,calc(31vw - 22px - var(--sl)));white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.25}  /* two lines: the district or kill tag is the part that matters */
 body.touch #clockSub,body.touch #heat em{font-size:10px}body.touch #objective,body.touch #kills,body.touch #wName,body.touch #status,body.touch #feed div{font-size:11px}
 #clockSub{background:rgba(8,8,10,.45);padding:1px 6px}  /* a backing so the red caption survives lit windows */
 #heat.cold em{opacity:0}
@@ -331,6 +344,7 @@ body.touch #clockSub,body.touch #heat em{font-size:10px}body.touch #objective,bo
   #smFoot{flex-wrap:nowrap}#smFoot .btn{flex:1 1 0;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:8px 8px}
 }
 body.touch #feed div:nth-child(n+4){display:none}
+@media (max-width:824px){body.touch #feed div:nth-child(n+3){display:none}}  /* narrow phones: the banner slides left under the feed, so two feed items, not three */
 @media (prefers-reduced-motion:reduce){#feed div,#banner.go h2,#heat.rise,#heat.rise i b,#objective.new,#ldFill:after,#phFlash.go{animation:none}#fade,#loading{transition:none}#loading:before{animation:none}}
 </style>
 
@@ -359,17 +373,15 @@ body.touch #feed div:nth-child(n+4){display:none}
 
 <div id="touch" class="hide">
   <div id="joy"><div id="knob"></div></div>
-  <div class="tb" id="bFire">FIRE</div>
+  <div class="tb k" id="bFire">FIRE</div>
+  <div class="tb k" id="bAds">AIM</div>
+  <div class="tb k" id="bCrouch">CROUCH</div>
+  <div class="tb k" id="bJump">JUMP</div>
+  <div class="tb k" id="bReload">RELOAD</div>
+  <div class="tb k" id="bMelee">MELEE</div>
   <div class="tb" id="bFire2">FIRE</div>
-  <div class="tb" id="bAds">AIM</div>
-  <div class="tb" id="bJump">JUMP</div>
-  <div class="tb" id="bCrouch">SLIDE</div>
-  <div class="tb" id="bReload">RLD</div>
-  <div class="tb" id="bMelee">MELEE</div>
-  <div class="tb" id="bSwap">SWAP</div>
-  <div class="tb" id="bCam">CAM</div>
   <div class="tb hide" id="bAct">ACT</div>
-  <div class="tb" id="bPause">II</div>
+  <div class="tb" id="bPause" aria-label="Pause">II</div>
 </div>
 
 <div id="mTitle" class="menu hide">
@@ -418,6 +430,7 @@ body.touch #feed div:nth-child(n+4){display:none}
     <button class="btn sel" id="pResume">Resume</button>
     <button class="btn" id="pLoad">Loadout &amp; gunsmith</button>
     <button class="btn" id="pCam">Camera: first person</button>
+    <button class="btn" id="pShoulder">Shoulder: right</button>
     <button class="btn" id="pSet">Settings</button>
     <button class="btn" id="pPhoto">Photo mode</button>
     <button class="btn" id="pQuit">Quit to title</button>
@@ -428,8 +441,13 @@ body.touch #feed div:nth-child(n+4){display:none}
   <div class="setH full"><div class="eyebrow" id="setTitle">Settings</div><button class="btn" id="setBack">Done</button></div>
   <div class="setRow full"><div class="setLab"><b>Augment</b><span>How much of the net layer you see</span></div><div class="sld aug" id="sAug" role="slider" tabindex="0" aria-label="Augment"><i><b></b><u></u></i></div><output id="vAug"></output></div>
   <div class="setRow full"><div class="setLab"><b>Field of view</b><span>Default lets the camera choose</span></div><div class="sld" id="sFov" role="slider" tabindex="0" aria-label="Field of view"><i><b></b><u></u></i></div><output id="vFov"></output></div>
-  <div class="setRow full"><div class="setLab"><b>Sensitivity</b></div><div class="chips"><button class="chip" data-s="0.6">Low</button><button class="chip" data-s="1">Mid</button><button class="chip" data-s="1.5">High</button><button class="chip" data-s="2.2">Max</button></div></div>
-  <div class="setRow" id="rowAA"><div class="setLab"><b>Aim assist</b></div><div class="chips"><button class="chip" data-aa="1">On</button><button class="chip" data-aa="0">Off</button></div></div>
+  <div class="setRow full" id="rowSn"><div class="setLab"><b>Monsters</b><span>Demons, vampires, witches and worse</span></div><div class="chips"><button class="chip" data-sn="off">Off</button><button class="chip" data-sn="rare">Rare</button><button class="chip" data-sn="classic">Classic</button></div></div>
+  <div class="setSub full"><span class="eyebrow">Controls</span></div>
+  <div class="setRow full dOnly"><div class="setLab"><b>Sensitivity</b><span>Mouse</span></div><div class="chips"><button class="chip" data-s="0.6">Low</button><button class="chip" data-s="1">Mid</button><button class="chip" data-s="1.5">High</button><button class="chip" data-s="2.2">Max</button></div></div>
+  <div class="setRow full tOnly"><div class="setLab"><b>Look speed</b><span>How far a swipe turns you</span></div><div class="sld" id="sLook" role="slider" tabindex="0" aria-label="Look speed"><i><b></b><u></u></i></div><output id="vLook"></output></div>
+  <div class="setRow tOnly"><div class="setLab"><b>Button size</b></div><div class="chips"><button class="chip" data-bsz="s">S</button><button class="chip" data-bsz="m">M</button><button class="chip" data-bsz="l">L</button></div></div>
+  <div class="setRow tOnly"><div class="setLab"><b>Left fire</b><span>A second FIRE for the left thumb</span></div><div class="chips"><button class="chip" data-lf="1">On</button><button class="chip" data-lf="0">Off</button></div></div>
+  <div class="setRow tOnly" id="rowAA"><div class="setLab"><b>Aim assist</b></div><div class="chips"><button class="chip" data-aa="1">On</button><button class="chip" data-aa="0">Off</button></div></div>
   <div class="setRow"><div class="setLab"><b>Invert look</b></div><div class="chips"><button class="chip" data-inv="1">On</button><button class="chip" data-inv="0">Off</button></div></div>
   <div class="setRow"><div class="setLab"><b>Graphics</b></div><div class="chips"><button class="chip" data-q="low">Low</button><button class="chip" data-q="high">High</button></div></div>
   <div class="setRow"><div class="setLab"><b>Music</b></div><div class="chips"><button class="chip" data-m="1">On</button><button class="chip" data-m="0">Off</button></div></div>

@@ -68,6 +68,30 @@ window.addEventListener('mousemove', e => {
 // hidden mid-press) can't leave FIRE held, a button lit or the stick dead.
 const TOUCH = { joy: null, look: null, fireIds: new Set(), bt: new Map(), sprint: false, sprintT: 0, st: '', lbl: '' };
 const JOY_R = 56, JOY_DZ = .14;
+// Look speed (Settings, touch only; mouse sensitivity is separate), button size and the optional left FIRE
+G.lookSpd = (() => { const v = store('ls'); return typeof v === 'number' ? clamp(v, .5, 2) : 1; })();
+G.btnSize = ['s', 'm', 'l'].includes(store('bsz')) ? store('bsz') : 'm';
+G.leftFire = store('lf') === 1;
+function setLookSpd(v) { G.lookSpd = clamp(v, .5, 2); store('ls', G.lookSpd); }
+function setBtnSize(v) { G.btnSize = v === 's' || v === 'l' ? v : 'm'; store('bsz', G.btnSize); touchPrefs(); }
+function setLeftFire(on) { G.leftFire = !!on; store('lf', on ? 1 : 0); touchPrefs(); }
+function touchPrefs() { const b = document.body; b.style.setProperty('--bs', G.btnSize === 's' ? .9 : G.btnSize === 'l' ? 1.12 : 1); b.classList.toggle('lfire', G.leftFire); }
+// Touch look. 1.0 turns 180 degrees per 280 px of drag at an ordinary swipe; a slow, careful drag runs a little finer
+// and a fast flick up to 1.5x further. The gain follows the finger's own speed (px/s on the event clock, smoothed over
+// ~45 ms), so it is the same at 30 or 120 fps, and a steady drag maps linearly. Vertical runs at 3/4.
+const LOOK_K = Math.PI / 280, LOOK_KY = .75, LOOK_SLOP = 6;
+function lookGain(v) { return v < 600 ? lerp(.86, 1, smooth01((v - 120) / 480)) : 1 + .5 * smooth01((v - 900) / 1700); }
+function touchTs(e) { const t = e.timeStamp; return t > 0 && isFinite(t) ? t : performance.now(); }
+function lookMove(o, x, y, ts) {
+  const dx = x - o.x, dy = y - o.y, dt = ts > o.ts ? clamp((ts - o.ts) / 1000, .004, .1) : .016, vi = Math.hypot(dx, dy) / dt; o.x = x; o.y = y; o.ts = ts;
+  o.v = o.v < 0 ? vi : o.v + (vi - o.v) * (1 - Math.exp(-dt / .045)); // the first move seeds it: a flick starts at speed
+  const g = lookGain(o.v); INP.lookX += dx * g; INP.lookY += dy * g * LOOK_KY;
+}
+// a finger that starts on a button steers once it has slid past the slop (a press with a wobble stays a press)
+function btnLook(b, t, ts) {
+  if (!b.live) { if (Math.hypot(t.clientX - b.sx, t.clientY - b.sy) < LOOK_SLOP) return; b.live = true; b.x = t.clientX; b.y = t.clientY; b.ts = ts; return; }
+  lookMove(b, t.clientX, t.clientY, ts);
+}
 function touchLive(e, id) { const l = e.touches; for (let i = 0; i < l.length; i++) if (l[i].identifier === id) return true; return false; }
 function joyEnd() { TOUCH.joy = null; INP.mx = INP.my = INP.joyMag = INP.joyRaw = 0; const j = $('joy'); if (j) j.style.opacity = 0; }
 function btnUp(id, b, lost) {
@@ -87,15 +111,16 @@ function touchReset() {
 }
 function setupTouch() {
   const joyEl = $('joy'), knob = $('knob');
+  touchPrefs();
   const btn = (id, down, up, look) => {
     const el = $(id); if (!el) return;
     el.addEventListener('touchstart', e => {
-      e.preventDefault(); e.stopPropagation(); touchSync(e);
-      for (const t of e.changedTouches) { const b = { el, x: t.clientX, y: t.clientY, up, look, t0: performance.now() }; TOUCH.bt.set(t.identifier, b); if (down) down(t.identifier, b); }
+      e.preventDefault(); e.stopPropagation(); touchSync(e); const ts = touchTs(e);
+      for (const t of e.changedTouches) { const b = { el, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts, v: -1, live: false, up, look, t0: performance.now() }; TOUCH.bt.set(t.identifier, b); if (down) down(t.identifier, b); }
       if (id !== 'bAds') el.classList.add('on');
     }, { passive: false });
-    // FIRE and AIM keep steering the view while held (drag off them and keep shooting, as in mobile CoD)
-    el.addEventListener('touchmove', e => { e.preventDefault(); e.stopPropagation(); for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b && b.look) { INP.lookX += (t.clientX - b.x) * 1.5; INP.lookY += (t.clientY - b.y) * 1.5; b.x = t.clientX; b.y = t.clientY; } } }, { passive: false });
+    // every action button steers the view once the thumb slides (press RELOAD and keep aiming, as in mobile CoD)
+    el.addEventListener('touchmove', e => { e.preventDefault(); e.stopPropagation(); const ts = touchTs(e); for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b && b.look) btnLook(b, t, ts); } }, { passive: false });
     const end = e => { e.preventDefault(); e.stopPropagation(); const lost = e.type === 'touchcancel'; for (const t of e.changedTouches) { const b = TOUCH.bt.get(t.identifier); if (b) btnUp(t.identifier, b, lost); } touchSync(e); };
     el.addEventListener('touchend', end, { passive: false }); el.addEventListener('touchcancel', end, { passive: false });
   };
@@ -103,11 +128,12 @@ function setupTouch() {
   btn('bFire', fireDown, fireUp, true); btn('bFire2', fireDown, fireUp, true);
   btn('bAds', () => { P.adsHeld = !P.adsHeld; $('bAds').classList.toggle('on', P.adsHeld); }, null, true);
   // JUMP is the handbrake in a car, held for as long as the thumb stays on it
-  btn('bJump', () => { if (P.inCar) INP.brake = true; else press('jump'); }, () => { INP.brake = false; });
-  btn('bCrouch', () => press('crouch')); btn('bReload', () => press('reload'));
-  btn('bMelee', () => press('melee')); btn('bSwap', () => press('swap')); btn('bAct', () => press('act')); btn('bPause', () => press('pause'));
-  // CAM: tap swaps first/third person; in third person a long press swaps the shoulder
-  btn('bCam', null, (id, b, lost) => { if (!lost) press(G.camMode === 'tpp' && performance.now() - b.t0 > 420 ? 'shoulder' : 'cam'); });
+  btn('bJump', () => { if (P.inCar) INP.brake = true; else press('jump'); }, () => { INP.brake = false; }, true);
+  btn('bCrouch', () => press('crouch'), null, true); btn('bReload', () => press('reload'), null, true); btn('bMelee', () => press('melee'), null, true);
+  btn('bAct', () => press('act')); btn('bPause', () => press('pause'));
+  // the weapon panel (top right) is the swap: tap for the other gun, hold for the blade; a drag that starts on it looks
+  btn('hBR', null, (id, b, lost) => { if (!lost && !b.live) press(performance.now() - b.t0 > 450 ? 's3' : 'swap'); }, true);
+  $('hBR').setAttribute('role', 'button'); $('hBR').setAttribute('aria-label', 'Swap weapon (hold for the blade)');
   const surface = document.body;
   surface.addEventListener('touchstart', e => {
     touchSync(e);
@@ -115,10 +141,11 @@ function setupTouch() {
     for (const t of e.changedTouches) {
       if (t.target.closest && t.target.closest('.menu,.tb')) continue;
       if (t.clientX < window.innerWidth * .42 && !TOUCH.joy) { TOUCH.joy = { id: t.identifier, x: t.clientX, y: t.clientY }; joyEl.style.left = t.clientX + 'px'; joyEl.style.top = t.clientY + 'px'; joyEl.style.opacity = 1; knob.style.transform = 'translate(0,0)'; }
-      else if (!TOUCH.look) { TOUCH.look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, t0: performance.now() }; }
+      else if (!TOUCH.look) { TOUCH.look = { id: t.identifier, x: t.clientX, y: t.clientY, sx: t.clientX, sy: t.clientY, ts: touchTs(e), v: -1, t0: performance.now() }; }
     }
   }, { passive: true });
   surface.addEventListener('touchmove', e => {
+    const ts = touchTs(e);
     for (const t of e.changedTouches) {
       const J = TOUCH.joy;
       if (J && t.identifier === J.id) {
@@ -127,7 +154,7 @@ function setupTouch() {
         const m = L / JOY_R, mm = clamp((m - JOY_DZ) / (1 - JOY_DZ), 0, 1), ux = L > 0 ? dx / L : 0, uy = L > 0 ? dy / L : 0; // dead zone, rescaled so the stick still reaches full speed
         INP.mx = ux * mm; INP.my = -uy * mm; INP.joyMag = mm; INP.joyRaw = m;
         const kr = Math.min(L, JOY_R); knob.style.transform = `translate(${ux * kr}px,${uy * kr}px)`;
-      } else if (TOUCH.look && t.identifier === TOUCH.look.id) { INP.lookX += (t.clientX - TOUCH.look.x) * 1.5; INP.lookY += (t.clientY - TOUCH.look.y) * 1.5; TOUCH.look.x = t.clientX; TOUCH.look.y = t.clientY; }
+      } else if (TOUCH.look && t.identifier === TOUCH.look.id) lookMove(TOUCH.look, t.clientX, t.clientY, ts);
     }
     if (G.state === 'city' || G.state === 'apt') e.preventDefault();
   }, { passive: false });
@@ -142,6 +169,9 @@ function setupTouch() {
     touchSync(e);
   };
   surface.addEventListener('touchend', endT); surface.addEventListener('touchcancel', endT);
+  // at the wheel the cluster is just BRAKE where FIRE was (body.drive). Checked every frame in every state, so dying in a
+  // car or restarting from one never leaves the apartment with only BRAKE showing
+  UPD.push(() => { const lb = P.inCar ? 'BRAKE' : 'JUMP'; if (TOUCH.lbl !== lb) { TOUCH.lbl = lb; $('bJump').textContent = lb; document.body.classList.toggle('drive', !!P.inCar); } });
   // leaving play (pause, gunsmith, photo, the end screen) lets go of everything the hidden layer was holding
   UPD.push(() => { if (TOUCH.st === G.state) return; const was = TOUCH.st; TOUCH.st = G.state; if ((was === 'city' || was === 'apt') && G.state !== 'city' && G.state !== 'apt' && G.state !== 'transit') touchReset(); });
 }
@@ -606,7 +636,6 @@ function breathSway(dt, s, w, moving) {
 }
 function updatePlayer(dt) {
   if (P.dead) { P.deadT += dt; P.eyeH = damp(P.eyeH, .3, 3, dt); return; }
-  if (IS_TOUCH) { const lb = P.inCar ? 'BRAKE' : 'JUMP'; if (TOUCH.lbl !== lb) { TOUCH.lbl = lb; const bj = $('bJump'); if (bj) bj.textContent = lb; } } // also right after dying in a car
   // heartbeat and the world going soft below half health (ambience.js)
   if (typeof AMB !== 'undefined' && AMB.lowHealth) AMB.lowHealth(G.state === 'city' ? smooth01((.5 - P.hp / P.maxHp) / .42) : 0);
   if (P.inCar) return driveUpdate(dt);
@@ -623,8 +652,8 @@ function updatePlayer(dt) {
     TOUCH.sprint = TOUCH.sprint ? INP.joyMag > .72 && fw > .4 : INP.joyMag > .92 && fw > .6;
     if (TOUCH.sprint && P.adsHeld && INP.joyRaw > 1.25 && fw > .8) { P.adsHeld = false; const ba = $('bAds'); if (ba) ba.classList.remove('on'); }
   }
-  // look: sensitivity, invert Y, the sights slow it, aim-assist friction over a target
-  const zk = s && s.st.zoom > 2 ? .45 : .7, sensK = (IS_TOUCH ? .0042 : .0022) * G.sens * lerp(1, zk, smooth01(P.ads)) * aaFriction();
+  // look: sensitivity (mouse) or look speed (touch), invert Y, the sights slow it, aim-assist friction over a target
+  const zk = s && s.st.zoom > 2 ? .45 : .7, sensK = (IS_TOUCH ? LOOK_K * G.lookSpd : .0022 * G.sens) * lerp(1, zk, smooth01(P.ads)) * aaFriction();
   let dyaw = -INP.lookX * sensK, dpit = -INP.lookY * sensK * (G.invertY ? -1 : 1);
   INP.lookX = 0; INP.lookY = 0;
   if (!IS_TOUCH) { if (KEY.ArrowLeft) dyaw += 2.2 * dt; if (KEY.ArrowRight) dyaw -= 2.2 * dt; if (KEY.ArrowUp) dpit += 1.6 * dt; if (KEY.ArrowDown) dpit -= 1.6 * dt; }
@@ -742,7 +771,7 @@ function updatePlayer(dt) {
     if (took('inspect') && P.reloadT <= 0) P.inspectT = 2.4;
   }
   if (took('cam')) toggleCam();
-  if (took('shoulder')) camState.pref = -camState.pref;
+  if (took('shoulder')) swapShoulder();
   // health regen
   P.regenT -= dt; if (P.regenT <= 0 && P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + 32 * dt);
   // body facing for third person
@@ -755,34 +784,45 @@ function lerpAngle(a, b, t) { let d = b - a; d = Math.atan2(Math.sin(d), Math.co
 // Touch aim assist (Settings > Aim assist; never on a mouse). The look slows while the crosshair is over a visible enemy,
 // the sights pull gently onto one as they come up, and a light follow holds it while aiming or firing. The old version
 // was a constant 1.8-3.5/s magnet toward anything in a 3-5 degree cone, through walls and onto disguised shifters.
-const AAS = { e: null, t: 0, los: false, k: 0, snap: 0 }, _aaO = new T.Vector3(), _aaF = new T.Vector3(), _aaC = new T.Vector3();
+// It never fights a turn: no pull while the view swings faster than ~90 deg/s or away from the target (and for .2 s
+// after), and the friction fades out on a fast swing. Only NPCs hostile to you are pulled onto; a bystander gets the
+// friction alone, and only once the crosshair is already right on them.
+const AAS = { e: null, t: 0, los: false, k: 0, snap: 0, hold: 0, host: true }, _aaO = new T.Vector3(), _aaF = new T.Vector3(), _aaC = new T.Vector3();
 const aaBubble = (e, L, ads) => Math.atan2((ads ? 1.1 : .8) * e.scale, L) + .012; // angular radius around the chest
+const aaHostile = e => typeof hostileToPlayer !== 'function' || !!hostileToPlayer(e);
 function aimAssist(dt) {
   const ads = P.ads > .5, o = P.eyeInto(_aaO), f = P.fwdInto(_aaF);
   if (G.camMode === 'tpp' && G.state === 'city') o.copy(camera.position); // the crosshair's ray
-  AAS.t -= dt; AAS.snap -= dt;
+  AAS.t -= dt; AAS.snap -= dt; AAS.hold = Math.max(0, AAS.hold - dt);
   if (AAS.t <= 0) { // ~10 Hz: the enemy nearest the crosshair inside its bubble, then one line-of-sight ray for it
-    AAS.t = .1; let best = null, bk = 1.25;
+    AAS.t = .1; let best = null, bk = 1.25, bh = true;
     for (const e of ENEMIES) {
       if (e.dead || e.mode === 'disguise' || (e.R && !e.R.root.visible)) continue;
       _aaC.set(e.pos.x - o.x, e.pos.y + 1.2 * e.scale - o.y, e.pos.z - o.z); const L = _aaC.length(); if (L < .5 || L > (ads ? 70 : 40)) continue;
-      const k = Math.acos(clamp(_aaC.dot(f) / L, -1, 1)) / aaBubble(e, L, ads); if (k < bk) { bk = k; best = e; }
+      const h = aaHostile(e), k = Math.acos(clamp(_aaC.dot(f) / L, -1, 1)) / aaBubble(e, L, ads) * (h ? 1 : 1.8); // a bystander has to be right under the crosshair
+      if (k < bk) { bk = k; best = e; bh = h; }
     }
-    AAS.e = best; AAS.los = !!best && (typeof aiLos === 'function' ? aiLos : losClear)(o, _aaC.set(best.pos.x, best.pos.y + 1.2 * best.scale, best.pos.z));
+    AAS.e = best; AAS.host = bh; AAS.los = !!best && (typeof aiLos === 'function' ? aiLos : losClear)(o, _aaC.set(best.pos.x, best.pos.y + 1.2 * best.scale, best.pos.z));
   }
   const e = AAS.e; AAS.k = 0;
   if (!e || !AAS.los || e.dead) return;
   _aaC.set(e.pos.x - o.x, e.pos.y + 1.2 * e.scale - o.y, e.pos.z - o.z); const L = _aaC.length(); _aaC.divideScalar(L);
   const a = Math.acos(clamp(_aaC.dot(f), -1, 1)), bub = aaBubble(e, L, ads); if (a > bub * 1.25) return;
-  AAS.k = smooth01(1 - a / bub); // friction for next frame's look
+  const ty = Math.atan2(-_aaC.x, -_aaC.z), tp = Math.asin(clamp(_aaC.y, -1, 1));
+  let ey = ty - P.yaw; ey = Math.atan2(Math.sin(ey), Math.cos(ey));
+  const rate = Math.hypot(P.lookVX || 0, P.lookVY || 0), away = rate > .25 && (P.lookVX || 0) * ey + (P.lookVY || 0) * (tp - P.pitch) < 0;
+  if (away || rate > 1.6) AAS.hold = .2;
+  AAS.k = smooth01(1 - a / bub) * (1 - smooth01((rate - 1.2) / 2.5)); // friction for next frame's look
+  if (AAS.hold > 0 || !AAS.host) return;
   const r = AAS.snap > 0 && P.ads > .05 ? 5 : ads || G.t - P.lastFire < .2 ? 1.1 * AAS.k : 0;
-  if (r > 0) { const k = Math.min(1, r * dt); P.yaw = lerpAngle(P.yaw, Math.atan2(-_aaC.x, -_aaC.z), k); P.pitch = lerp(P.pitch, Math.asin(clamp(_aaC.y, -1, 1)), k); }
+  if (r > 0) { const k = Math.min(1, r * dt); P.yaw = lerpAngle(P.yaw, ty, k); P.pitch = lerp(P.pitch, tp, k); }
 }
-function aaFriction() { return IS_TOUCH && G.aimAssist && AAS.e && AAS.los ? 1 - .42 * AAS.k : 1; }
+function aaFriction() { return IS_TOUCH && G.aimAssist && AAS.e && AAS.los ? 1 - .35 * AAS.k : 1; }
 function toggleCam() { G.camMode = G.camMode === 'fpp' ? 'tpp' : 'fpp'; store('cam', G.camMode); $('pCam').textContent = 'Camera: ' + (G.camMode === 'fpp' ? 'first person' : 'third person'); flashBanner(G.camMode === 'fpp' ? 'FIRST PERSON' : 'THIRD PERSON', '', .7); }
+function swapShoulder() { camState.pref = -camState.pref; store('sh', camState.pref); const b = $('pShoulder'); if (b) b.textContent = 'Shoulder: ' + (camState.pref > 0 ? 'right' : 'left'); }
 
 /* ---------------- camera ---------------- */
-const camState = { tppDist: 2.25, side: 1, pref: 1, want: 1, sideT: 0 };
+const camState = { tppDist: 2.25, side: 1, pref: store('sh') === -1 ? -1 : 1, want: 1, sideT: 0 };
 // prefers-reduced-motion: shake, head bob, the landing dip, rolls and FOV kicks drop to 30%
 const RMQ = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
 const _cq = new T.Quaternion(), _ce = new T.Euler(0, 0, 0, 'YXZ'), _cpv = new T.Vector3(), _csr = new T.Vector3(), _cof = new T.Vector3(), _cdr = new T.Vector3(), _ccW = new T.Vector3();
@@ -862,7 +902,7 @@ function enterCar(c) {
   // drop whatever the hands were doing (a reload, swing or inspect used to resume mid-way on the way out)
   P.inCar = c; c.occ = true; P.ads = 0; P.adsHeld = false; P.reloadT = 0; P.shellMode = false; P.rStages = null; P.meleeT = 0; P.inspectT = 0; P.cycleT = 0; P.slide = 0; P.slideCam = 0; P.crouching = false; P.sprint = false; P.fireQ = 0; INP.brake = false;
   const ba = $('bAds'); if (ba) ba.classList.remove('on');
-  flashBanner('BEHIND THE WHEEL', IS_TOUCH ? 'Stick to drive · JUMP = handbrake · ACT to exit' : 'WASD drive · Space handbrake · E to exit', 1.4);
+  flashBanner('BEHIND THE WHEEL', IS_TOUCH ? 'Stick to drive · BRAKE slides · ACT gets out' : 'WASD drive · Space handbrake · E to exit', 1.4);
   AU.engineSet(true, 0);
 }
 function exitCar() {

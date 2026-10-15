@@ -25,29 +25,36 @@ function broadcast(lines, tag) {
 }
 
 function storyIntro() {
-  broadcast(['This is the Municipal Alert Network. This is not a drill.', 'From 7:00 PM to 7:00 AM, every law in Cairo, Sacramento, Texarkana and Salem is suspended.', 'Police, fire and medical services will not respond. Stay indoors. Lock your doors.', 'And whatever knocks tonight — do not let it wear a familiar face.']);
+  broadcast(['This is the Municipal Alert Network. This is not a drill.', 'From 7:00 PM to 7:00 AM, every law in Cairo, Sacramento, Texarkana and Salem is suspended.', 'Police, fire and medical services will not respond. Stay indoors. Lock your doors.',
+    G.supernatural === 'off' ? 'Council sweep teams deploy at midnight. They will not ask whose side you are on.' : 'And whatever knocks tonight — do not let it wear a familiar face.']);
 }
+// the night on the radio: crews, looters, the porches, the grid and the sweep teams. The supernatural lines replace a few only
+// when the Monsters setting lets them in (rare: two after 10 PM; classic: v21's)
 const HOUR_LINES = [
   null,
-  ['KTXK 101.9 — Callers in Cairo say the bazaar lights came on by themselves.', 'RADIO'],
-  ['Anonymous caller: "My neighbor\'s skin slipped. Like a glove." Line goes dead.', 'RADIO'],
+  ['KTXK 101.9 — Callers on State Line say Eastline and the Rail Kings are fighting over the rail bridge.', 'RADIO'],
+  ['Scanner, unattended: "...windows going all down Capitol Mall... they\'re taking the pharmacies first..."', 'SCANNER'],
   null, // 10 PM: safehouse broadcast handles this hour
-  ['The moon is coming up red over Sacramento. The vampires love a blood moon.', 'RADIO'],
-  ['Salem PD scanner, unattended: "...circle on Gallows Hill... seven of them chanting..."', 'SCANNER'],
+  ['Block Watch on Gallows Hill: anyone armed on their street will be fired on. They mean it.', 'RADIO'],
+  ['Council notice: sweep teams are deployed citywide. Armed persons will be engaged without warning.', 'MUNICIPAL ALERT NETWORK'],
   ['Halfway. If you can hear this, you\'re doing better than most.', 'RADIO'],
   ['Texarkana: the state line is meaningless tonight. Both sides are burning.', 'RADIO'],
   null, // 3 AM: second safehouse
-  ['The devil\'s hour is over. Whatever made it through is the worst of them.', 'RADIO'],
-  ['Survivor network: four hours of signal left. Ration your ammo.', 'SURVIVOR NET'],
+  ['Caller: "The sweepers cleared our block. Everyone. Even the ones with their hands up."', 'RADIO'],
+  ['Survivor network: two hours of signal left. Ration your ammo.', 'SURVIVOR NET'],
   null, // 6 AM: final wave
 ];
+const HOUR_LINES_SN = {
+  classic: { 1: ['KTXK 101.9 — Callers in Cairo say the bazaar lights came on by themselves.', 'RADIO'], 2: ['Anonymous caller: "My neighbor\'s skin slipped. Like a glove." Line goes dead.', 'RADIO'], 4: ['The moon is coming up red over Sacramento. The vampires love a blood moon.', 'RADIO'], 9: ['The devil\'s hour is over. Whatever made it through is the worst of them.', 'RADIO'] },
+  rare: { 4: ['Unconfirmed, Salem: something on Gallows Hill that walks like a man and isn\'t one.', 'SCANNER'], 9: ['The devil\'s hour is over. Whatever made it through is the worst of them.', 'RADIO'] },
+};
 const SAFEHOUSES = [
   { hour: 3, room: 'church', d: 3, line: 'Survivor transmission: the Old North Church in Salem is holding. Doors open for ten minutes. Get there.' },
   { hour: 8, room: 'guns', d: 2, line: 'Survivor transmission: Red River Arms in Texarkana still has lights and a full ammo cage. Move.' },
 ];
 function storyHour(h) {
   if (h === 0) return;
-  const L = HOUR_LINES[h]; if (L) broadcast(L[0], L[1]);
+  const L = (HOUR_LINES_SN[G.supernatural] || {})[h] || HOUR_LINES[h]; if (L) broadcast(L[0], L[1]);
   const sh = SAFEHOUSES.find(s => s.hour === h);
   if (sh && !STORY.done['safe' + h]) {
     STORY.done['safe' + h] = 1; const R = ROOMS[sh.room]; const door = R && (R.doors.find(o => o.d === sh.d) || R.doors[0]); // the guns room has a door in two districts
@@ -107,6 +114,7 @@ function storyUpdate(dt) {
   }
   // the final wave, staggered so six rigs don't build in one frame, held while you're indoors
   if (STORY.wave > 0 && G.state === 'city' && !G.inside && G.started && !P.dead && (STORY.waveT -= dt) <= 0) {
-    STORY.waveT = .25; STORY.wave--; const pt = spawnPoint(); if (pt) ENEMIES.push(new Enemy(pick(['purger', 'demon', 'vampire', 'shifter', 'reptile']), pt.x, pt.z, { aware: true }));
+    STORY.waveT = .25; STORY.wave--; const pt = spawnPoint();
+    if (pt) { const d = districtAt(pt.x, pt.z), m = Math.random() < superChance(11, d) ? pickMonster(d, 11) : null; ENEMIES.push(new Enemy(m || pick(['purger', 'purger', 'sweeper']), pt.x, pt.z, { aware: true, sq: 4999 })); } // the last push: purgers and a sweep team, one squad, all on you
   }
 }

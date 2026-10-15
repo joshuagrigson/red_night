@@ -84,14 +84,18 @@ function ensureChar(id) {
   return def.p;
 }
 function charStreamOrder() {
-  // enemy models in the order spawnTable unlocks their types (first hour a type's weight reaches 1, then its weight at dusk)
+  // enemy models in the order spawnTable unlocks their types (first hour a type's weight reaches 1, then its weight at dusk).
+  // Only 'classic' streams the monsters up front: 'rare' fetches them at 9 PM (the director calls charStreamMore), 'off' never
+  // (setSupernatural queues them if that changes). Less to download and hold on a phone for the hours they can't turn up
   const unl = t => { for (let h = 0; h < 9; h++) if (spawnTable(-1, h)[t] >= 1) return h; return 9; }, h0 = spawnTable(-1, 0);
-  const ids = []; for (const t of Object.keys(ENEMY_NEEDS).sort((a, b) => unl(a) - unl(b) || h0[b] - h0[a])) ids.push(...ENEMY_NEEDS[t]);
+  const ids = []; for (const t of Object.keys(ENEMY_NEEDS).sort((a, b) => unl(a) - unl(b) || h0[b] - h0[a])) if (!SUPER[t] || G.supernatural === 'classic') ids.push(...ENEMY_NEEDS[t]);
   // then the outfits, this body first. Phones keep only what the night needs in memory: their other outfits load when picked.
   if (!LOWMEM) { for (const g of G.char.gender === 'f' ? ['f', 'm'] : ['m', 'f']) for (const o in PLAYER_MODELS[g]) ids.push(PLAYER_MODELS[g][o]); ids.push(...Object.keys(CHARS)); }
   return [...new Set(ids)].filter(id => CHARS[id]);
 }
 function charStreamStart() { if (CSTREAM.on) return; CSTREAM.on = true; CSTREAM.q = charStreamOrder(); charStreamNext(); charStreamNext(); }
+// Monsters switched back on mid-session: queue the models that were left out
+function charStreamMore() { if (!CSTREAM.on) return; const idle = !CSTREAM.q.length; for (const t in ENEMY_NEEDS) if (SUPER[t]) for (const id of ENEMY_NEEDS[t]) if (CHARS[id] && !CHARS[id].p && CSTREAM.q.indexOf(id) < 0) CSTREAM.q.push(id); if (idle) charStreamNext(); }
 function charStreamNext() {
   while (CSTREAM.q.length && CHARS[CSTREAM.q[0]].p) CSTREAM.q.shift(); // already in, or fetched on demand
   if (CSTREAM.q.length) ensureChar(CSTREAM.q.shift()).then(() => setTimeout(charStreamNext, 60));
@@ -238,7 +242,7 @@ function makeGLBRig(id) {
   const mats = GLB_MATS.skin ? GLB_MATS : Object.assign(GLB_MATS, { skin: new T.MeshStandardMaterial(), top: new T.MeshStandardMaterial(), bottom: new T.MeshStandardMaterial(), shoe: new T.MeshStandardMaterial(), acc: new T.MeshBasicMaterial(), eyeM: new T.MeshBasicMaterial() });
   const rc = RIMCOL[id] || [0x7ab8ff, .3];
   const meshes = []; m.traverse(o => { if (o.isMesh) { o.material = o.material.clone(); addRim(o.material, rc[0], rc[1]); meshes.push(o); } });
-  const R = { glb: id, root, model: m, mixer, actions, cur: null, mats, eyeM: mats.eyeM, eyes: [], head: head || new T.Object3D(), skull: { material: null }, rArm: { hand: hand || root }, lArm: { hand: lhand || root }, hips, spine, meshes, f: id === 'female' || id === 'witch' || id === 'civilian' };
+  const R = { glb: id, root, pivot, model: m, mixer, actions, cur: null, mats, eyeM: mats.eyeM, eyes: [], head: head || new T.Object3D(), skull: { material: null }, rArm: { hand: hand || root }, lArm: { hand: lhand || root }, hips, spine, meshes, f: id === 'female' || id === 'witch' || id === 'civilian' };
   play(R, 'idle', 0);
   return R;
 }

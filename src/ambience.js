@@ -328,8 +328,9 @@ const BARK_SYN = {
   demon: { f: [64, 44], d: .75, F: [330, 760], b: .35, a: .03, drive: 1 }, shifter: { f: [92, 60], d: .5, F: [450, 900], b: .3, a: .02, drive: 1 },
   witch: { f: 0, d: .55, F: [900, 2600], b: 1, a: .06, syl: 3 }, vampire: { f: 0, d: .5, F: [5200, 7600], b: 1, a: .03, hp: 1 },
   reptile: { f: 0, d: .45, F: [2600, 5400], b: 1, a: .01, syl: 3 }, civ: { f: 0, d: .28, F: [1300, 2300], b: 1, a: .05 },
+  warn: { f: [200, 250, 165], d: .55, F: [800, 1750], b: .18, a: .015, syl: 2 }, radio: { f: 0, d: .42, F: [1900, 3300], b: .9, a: .005, syl: 4 }, // "hey, hey!" off a porch; a sweep team's radio squelch
 };
-const BARK_TYPE = { purger: ['shout', 'grunt'], demon: ['demon'], vampire: ['vampire'], witch: ['witch'], reptile: ['reptile'], shifter: ['shifter'], civilian: ['civ'] };
+const BARK_TYPE = { purger: ['shout', 'grunt'], demon: ['demon'], vampire: ['vampire'], witch: ['witch'], reptile: ['reptile'], shifter: ['shifter'], civilian: ['civ'], watch: ['warn', 'shout'], crew: ['shout', 'grunt'], looter: ['grunt', 'civ'], sweeper: ['radio', 'shout'] };
 // opt.ambient: a background cue that should not stand down AMB's own alert/pain barks for 12 s
 AMB.bark = function (pos, kind, opt) {
   if (!this._int && !(opt && opt.ambient)) this.extBT = G.t;
@@ -351,7 +352,7 @@ AMB.bark = function (pos, kind, opt) {
     avGo(v, t0, t0 + d + .05);
   } catch (e) { avFree(v); }
 };
-const ALERT_BARK = { purger: 'shout', demon: 'demon', vampire: 'vampire', witch: 'witch', reptile: 'reptile' }, PAIN_BARK = { purger: 'grunt', demon: 'demon', shifter: 'shifter', reptile: 'reptile' };
+const ALERT_BARK = { purger: 'shout', demon: 'demon', vampire: 'vampire', witch: 'witch', reptile: 'reptile', watch: 'warn', crew: 'shout', looter: 'civ', sweeper: 'radio' }, PAIN_BARK = { purger: 'grunt', demon: 'demon', shifter: 'shifter', reptile: 'reptile', watch: 'grunt', crew: 'grunt', looter: 'grunt', sweeper: 'grunt' };
 // enemies voice what they're doing (spotted you, hurt, dying, idle chatter) unless the AI is calling bark() itself
 AMB.autoBarks = function (dt) {
   if (G.state !== 'city' || G.t - this.extBT < 12) return; this.barkT -= dt;
@@ -360,10 +361,10 @@ AMB.autoBarks = function (dt) {
     const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, d2 = dx * dx + dz * dz;
     if (d2 < 45 * 45 && this.barkT <= 0 && e.mode !== 'disguise') {
       let k = null;
-      if (e.dead && !s.dead) k = e.type === 'purger' && Math.random() < .7 ? 'death' : null;
+      if (e.dead && !s.dead) k = e.human && Math.random() < .7 ? 'death' : null;
       else if (!e.dead && e.aware && !s.aw && Math.random() < .75) k = ALERT_BARK[e.type];
       else if (!e.dead && s.hp - e.hp > 12 && Math.random() < .55) k = PAIN_BARK[e.type];
-      else if (!e.dead && !e.aware && e.type === 'purger' && d2 < 20 * 20 && Math.random() < .006) k = 'mutter';
+      else if (!e.dead && !e.aware && e.human && e.type !== 'sweeper' && d2 < 20 * 20 && Math.random() < .006) k = 'mutter';
       if (k) { this._int = 1; this.bark(e.pos, k); this._int = 0; this.barkT = .7; }
     }
     s.aw = e.aware; s.hp = e.hp; s.dead = e.dead;
@@ -529,7 +530,12 @@ AMB.dangerTick = function (dt, st) {
   let tgt = .06;
   if (st === 'city' && G.started !== undefined) {
     let a = 0, s = 0, n = 0;
-    for (const e of ENEMIES) { if (e.dead || e.waitT >= 0) continue; const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, d2 = dx * dx + dz * dz; if (d2 > 6400) continue; if (e.aware) a++; if (e.seesP) s++; if (d2 < 900 && e.mode !== 'disguise') n++; }
+    for (const e of ENEMIES) { // the score follows what's after you; somebody else's firefight nearby still counts for half
+      if (e.dead || e.waitT >= 0) continue; const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, d2 = dx * dx + dz * dz; if (d2 > 6400) continue;
+      const mine = typeof hostileToPlayer !== 'function' || hostileToPlayer(e);
+      if (!mine) { if (e.tg && e.seesT && d2 < 2500) a += .5; continue; }
+      if (e.aware) a++; if (e.seesP) s++; if (d2 < 900 && e.mode !== 'disguise') n++;
+    }
     const h = clamp((G.hour || 0) / 12, 0, 1), heat = typeof HEAT !== 'undefined' ? clamp((HEAT.level || 0) / 5, 0, 1) : 0, hp = P.maxHp ? clamp(1 - P.hp / P.maxHp, 0, 1) : 0;
     const hot = a > 0 && (G.t - (P.lastFire || -99) < 3 || P.regenT > 0);   // regenT > 0: hit in the last few seconds
     tgt = P.dead ? .1 : clamp(.07 + .12 * h + .1 * heat + Math.min(1, a * .2 + n * .1) * .38 + (s > 0 ? .28 : 0) + (hot ? .22 : 0) + hp * .14, 0, 1);
