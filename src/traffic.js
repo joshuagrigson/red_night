@@ -196,9 +196,10 @@ function gangDismount(c, force) {
   const d = Math.hypot(p.x - P.pos.x, p.z - P.pos.z); if (!force && d < 20 && trafficInView(p.x, p.z)) return false;
   const kind = S.kind || 'purger', crew = kind === 'crew', e = new Enemy(kind, p.x, p.z, { aware: !crew, ranged: kind === 'purger' ? .8 : undefined, fac: S.fac, sq: S.sq });
   e.sq = S.sq; e.face = Math.atan2(-(P.pos.x - e.pos.x), -(P.pos.z - e.pos.z)); e.reactT = rand(.6, 1.1);
-  if (crew) { // toward the nearest group it has a quarrel with, else on up the street the car was driving
+  if (crew) { // toward the nearest group it has a quarrel with, else off into the block, away from you
     let rv = null, bd = 80 * 80; for (const o of ENEMIES) { if (o.dead || !o.human || !factionHostile(e, o)) continue; const d2 = o.pos.distanceToSquared(c.pos); if (d2 < bd) { bd = d2; rv = o; } }
-    e.roam = rv ? rv.pos.clone() : new T.Vector3(c.pos.x + fx * rand(14, 24), 0, c.pos.z + fz * rand(14, 24)); collideCircle(e.roam, .6, 0, 1.8); e.roamT = rand(12, 20);
+    const a = Math.atan2(c.pos.x - P.pos.x, c.pos.z - P.pos.z) + rand(-.8, .8), r = rand(18, 30);
+    e.roam = rv ? rv.pos.clone() : new T.Vector3(c.pos.x + Math.sin(a) * r, 0, c.pos.z + Math.cos(a) * r); collideCircle(e.roam, .6, 0, 1.8); e.roamT = rand(12, 20);
   } else { e.lastKnown.set(P.pos.x + rand(-3, 3), 0, P.pos.z + rand(-3, 3)); e.frags = Math.random() < .5 ? rint(1, 2) : 0; }
   ENEMIES.push(e); const sp = spatial(e.pos); AU.nz(.12, 'lowpass', 900, 160, 1, .45 * sp.vol, sp.pan); // door slam
   if (k === 0 && typeof feed === 'function') feed(kind === 'sweeper' ? '<b>COUNCIL SWEEPERS</b> · A van just stopped' : kind === 'crew' ? `<b>${FACTIONS[S.fac].name.toUpperCase()}</b> · Rolling up` : '<b>PURGER CREW</b> · Pulling up on you');
