@@ -492,7 +492,17 @@ function endExtras(prevBest) {
 }
 
 /* ---------- photo mode: the world freezes, a free camera flies, one frame saves at up to 2x ---------- */
-const PH = { pos: new T.Vector3(), yaw: 0, pitch: 0, fov: 60, saved: null, lo: new T.Vector3(), hi: new T.Vector3(), ptrs: new Map(), pinch: 0, cx: 0, cy: 0, mv: new T.Vector3(), ui: true, out: false, tap: null, blob: null, hintT: 0 };
+const PH = { pos: new T.Vector3(), yaw: 0, pitch: 0, fov: 60, saved: null, lo: new T.Vector3(), hi: new T.Vector3(), ptrs: new Map(), pinch: 0, cx: 0, cy: 0, mv: new T.Vector3(), ui: true, out: false, tap: null, blob: null, jpg: null, name: '', dls: null, hintT: 0 };
+// inside the Claude app a plain download link does nothing; the artifact's downloads capability asks the viewer and saves
+try { if (window.claude && window.claude.use) window.claude.use('downloads').then(d => { PH.dls = d; }).catch(() => { }); } catch (e) { }
+function phSave(e) {
+  if (!PH.dls || !PH.jpg) return; // plain link (local builds, browsers)
+  if (e) e.preventDefault();
+  PH.dls.save({ filename: PH.name, data: PH.jpg }).then(() => phHint('Saved', 1.6)).catch(er => {
+    const c = er && er.code; if (c === 'declined') return;
+    phHint(c === 'rate_limited' ? 'One moment, then try again' : IS_TOUCH ? 'Press and hold the picture to save it' : 'Use Open and save it from there', 2.6);
+  });
+}
 const _phF = new T.Vector3(), _phR = new T.Vector3(), _phE = new T.Euler(0, 0, 0, 'YXZ');
 function setupPhoto() {
   augSlider('phAug');
@@ -589,12 +599,12 @@ function photoShot(noDownload) {
   pulse('phFlash', 'go'); try { AU.nz(.05, 'highpass', 3000, 5200, 1, .22); } catch (e) { }
   if (!url || url.length < 2000) { phHint('Could not capture this frame', 2.5); return null; }
   let href = url;
-  try { const bin = atob(url.slice(url.indexOf(',') + 1)), n = bin.length, u8 = new Uint8Array(n); for (let i = 0; i < n; i++) u8[i] = bin.charCodeAt(i); if (PH.blob) URL.revokeObjectURL(PH.blob); PH.blob = href = URL.createObjectURL(new Blob([u8], { type: 'image/jpeg' })); } catch (e) { }
+  try { const bin = atob(url.slice(url.indexOf(',') + 1)), n = bin.length, u8 = new Uint8Array(n); for (let i = 0; i < n; i++) u8[i] = bin.charCodeAt(i); if (PH.blob) URL.revokeObjectURL(PH.blob); PH.jpg = new Blob([u8], { type: 'image/jpeg' }); PH.blob = href = URL.createObjectURL(PH.jpg); } catch (e) { PH.jpg = null; }
   const name = 'red-night-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.jpg';
-  $('phImg').src = href; const dl = $('phDl'); dl.href = href; dl.download = name; $('phOpen').href = href;
-  $('phNote').textContent = IS_TOUCH ? 'Press and hold the picture to save it to Photos, or use Download.' : 'If nothing downloaded, use Open and save it from the new tab.';
+  PH.name = name; $('phImg').src = href; const dl = $('phDl'); dl.href = href; dl.download = name; $('phOpen').href = href; dl.onclick = phSave;
+  $('phNote').textContent = PH.dls ? (IS_TOUCH ? 'Download asks where to save it. You can also press and hold the picture.' : 'Download asks where to save it.') : IS_TOUCH ? 'Press and hold the picture to save it to Photos, or use Download.' : 'If nothing downloaded, use Open and save it from the new tab.';
   show('phOut', true); PH.out = true;
-  if (!IS_TOUCH && !noDownload) try { dl.click(); } catch (e) { }
+  if (!IS_TOUCH && !noDownload && !PH.dls) try { dl.click(); } catch (e) { } // in the app the viewer confirms each save, so it waits for the button
   return url;
 }
 function closeShot() { if (!PH.out) return; PH.out = false; show('phOut', false); }
