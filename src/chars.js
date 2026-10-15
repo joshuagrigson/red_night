@@ -257,14 +257,15 @@ function crouchOverlay(R, w) {
     pointBone(l, f, new T.Vector3().addScaledVector(F, -.14).add(new T.Vector3(0, -1, 0)).normalize(), w);
   });
 }
-// neon rim light so characters read against the night streets (Cyberpunk-style silhouettes)
+// rim light so characters read against the night streets: warm streetlight on a bare city, their neon colour as Augment rises
+const RIM_AUG = { value: 1 }; AUG_HOOKS.push(a => { RIM_AUG.value = smooth01((a - .05) / .7); }); RIM_AUG.value = smooth01((G.aug - .05) / .7);
 function addRim(mat, col, k) {
   if (mat.userData.rim) return; mat.userData.rim = { c: { value: new T.Color(col) }, k: { value: k } };
   const prev = mat.onBeforeCompile, U = mat.userData.rim;
   mat.onBeforeCompile = (sh, r) => {
     if (prev) prev.call(mat, sh, r);
-    sh.uniforms.rimC = U.c; sh.uniforms.rimK = U.k;
-    sh.fragmentShader = 'uniform vec3 rimC; uniform float rimK;\n' + sh.fragmentShader.replace('#include <output_fragment>', 'outgoingLight += rimC * pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.4) * rimK;\n#include <output_fragment>');
+    sh.uniforms.rimC = U.c; sh.uniforms.rimK = U.k; sh.uniforms.rimAug = RIM_AUG;
+    sh.fragmentShader = 'uniform vec3 rimC; uniform float rimK; uniform float rimAug;\n' + sh.fragmentShader.replace('#include <output_fragment>', 'outgoingLight += mix(vec3(1.0, .6, .32), rimC, rimAug) * pow(1.0 - clamp(dot(normalize(normal), normalize(vViewPosition)), 0.0, 1.0), 2.4) * rimK * (.55 + .45 * rimAug);\n#include <output_fragment>');
   };
   const pk = mat.customProgramCacheKey; mat.customProgramCacheKey = () => (pk ? pk.call(mat) : '') + '|rim'; mat.needsUpdate = true;
 }

@@ -85,10 +85,10 @@ function updateDigital(dt, st) {
   // data motes
   for (const m of DIG.motes) { m.y -= m.v * ft; if (m.y < -.02) { m.y = 1.02; m.x = Math.random(); } x.fillStyle = `rgba(5,217,232,${(m.a * a).toFixed(3)})`; x.fillRect(m.x * W, m.y * H, m.s * k, m.s * k); }
   // code fragments on angled edge panels ("tipped" toward the viewer)
-  const n = Math.round(6 + 24 * smooth01(a)); x.textBaseline = 'middle';
+  const n = Math.round(3 + 27 * Math.pow(a, 1.6)); x.textBaseline = 'middle';
   for (let i = 0; i < n; i++) {
     const f = DIG.frags[i]; f.life += ft; f.y += f.vy * ft; f.x += f.vx * ft; if (f.life > f.max || f.y < H * .04) digFrag(f, false);
-    const fa = Math.min(1, f.life / .8, (f.max - f.life) / 1.2) * f.a * (.45 + a * .55); if (fa <= .01) continue;
+    const fa = Math.min(1, f.life / .8, (f.max - f.life) / 1.2) * f.a * (.28 + a * .72); if (fa <= .01) continue;
     const edge = f.side < 0 ? 1 - f.x / (W * .22) : (f.x - W * .78) / (W * .22), sk = f.side * .07;
     x.setTransform(1, sk * .6, 0, 1, f.x, f.y); x.font = `${(f.sz * (1 + clamp(edge, 0, 1) * .25) * k).toFixed(1)}px 'Share Tech Mono', monospace`;
     x.textAlign = f.side < 0 ? 'left' : 'right'; x.fillStyle = f.col; x.globalAlpha = fa; x.fillText(f.text, 0, 0);
