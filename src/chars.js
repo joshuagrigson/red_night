@@ -105,7 +105,7 @@ function charStreamOrder() {
   if (!LOWMEM) { for (const g of G.char.gender === 'f' ? ['f', 'm'] : ['m', 'f']) for (const o in PLAYER_MODELS[g]) ids.push(PLAYER_MODELS[g][o]); ids.push(...Object.keys(CHARS)); }
   return [...new Set(ids)].filter(id => CHARS[id]);
 }
-function charStreamStart() { if (CSTREAM.on) return; CSTREAM.on = true; CSTREAM.q = charStreamOrder(); charStreamNext(); charStreamNext(); }
+function charStreamStart() { if (CSTREAM.on) return; CSTREAM.on = true; CSTREAM.q = charStreamOrder(); charStreamNext(); charStreamNext(); animPacks(); }
 // Monsters switched back on mid-session: queue the models that were left out
 function charStreamMore() { if (!CSTREAM.on) return; const idle = !CSTREAM.q.length; for (const t in ENEMY_NEEDS) if (SUPER[t]) for (const id of ENEMY_NEEDS[t]) if (CHARS[id] && !CHARS[id].p && CSTREAM.q.indexOf(id) < 0) CSTREAM.q.push(id); if (idle) charStreamNext(); }
 function charStreamNext() {
@@ -219,8 +219,8 @@ const _bq = new T.Quaternion(), _bq2 = new T.Quaternion(), _bv = new T.Vector3()
 // t = duration wraps to frame 0 and a corpse's last pose is its first (every baked model stood back up when 'die' ended)
 const ONESHOT = { die: 1, fall: 1, hit: 1, slash: 1, punch: 1, cast: 1 };
 function bakeClip(C, logical) {
-  const want = CLIPMAP[logical]; let src = ANIMLIB.raw[want];
-  if (!src) { const k = Object.keys(ANIMLIB.raw).find(n => n.startsWith(want)); if (k) src = ANIMLIB.raw[k]; }
+  const core = !!CLIPMAP[logical], want = core ? CLIPMAP[logical] : XCLIP[logical]; let src = core ? ANIMLIB.raw[want] : XL.raw && XL.raw[want];
+  if (!src && core) { const k = Object.keys(ANIMLIB.raw).find(n => n.startsWith(want)); if (k) src = ANIMLIB.raw[k]; }
   if (!src) return null;
   const tracks = [];
   // hips translation (and, without baking, raw rotations)
@@ -233,19 +233,22 @@ function bakeClip(C, logical) {
     if (prop === 'position') {
       if (boneKey(bone) !== 'hips' || C.hw) continue; // only the hips may translate (tr2: sampled in world space below)
       const v = nt.values; for (let i = 0; i < v.length; i++) v[i] *= C.ratio;
-      if (logical === 'walk' || logical === 'run') { for (let i = 0; i < v.length; i += 3) { v[i] = v[0]; v[i + 2] = v[2]; } } // in place
+      if (INPLACE[logical]) { for (let i = 0; i < v.length; i += 3) { v[i] = v[0]; v[i + 2] = v[2]; } } // in place
     }
     tracks.push(nt);
   }
   if (C.bake) {
     const S = retargetSrc(), tgt = C.tgt, fps = 30, n = Math.max(2, Math.ceil(src.duration * fps) + 1), times = new Float32Array(n), vals = tgt.map(() => new Float32Array(n * 4));
     const H = C.hw, hp = H ? new Float32Array(n * 3) : null;
-    const act = S.mixer.clipAction(src); act.reset();
+    // the pack clips bake on a mixer of their own, made and dropped per clip: they interleave with the core bakes, which share
+    // S.mixer, and three's action cache didn't survive the two taking turns on one
+    const MX = core ? S.mixer : new T.AnimationMixer(S.s), act = MX.clipAction(src); act.reset();
     if (ONESHOT[logical]) { act.setLoop(T.LoopOnce, 1); act.clampWhenFinished = true; } else act.setLoop(T.LoopRepeat, Infinity);
     act.play();
+    const fa = !core && fingerIdle() ? MX.clipAction(fingerIdle()) : null; if (fa) { fa.reset(); fa.play(); } // a lite pack's hands
     for (let f = 0; f < n; f++) {
       const time = Math.min(src.duration, f / fps); times[f] = time;
-      S.mixer.setTime(time); S.s.updateMatrixWorld(true); // every world matrix is fresh: read them directly, parents before children
+      MX.setTime(time); S.s.updateMatrixWorld(true); // every world matrix is fresh: read them directly, parents before children
       for (let j = 0; j < tgt.length; j++) {
         const T0 = tgt[j], pw = T0.pi >= 0 ? tgt[T0.pi].w : T0.parentStatic, w = T0.w;
         if (T0.sb) { T0.sb.matrixWorld.decompose(_bv, _bq, _bs); w.copy(_bq).multiply(T0.srcInv).multiply(T0.rest); }
@@ -254,9 +257,9 @@ function bakeClip(C, logical) {
       }
       if (H) { _bv.setFromMatrixPosition(S.bones.hips.matrixWorld); const i3 = f * 3; hp[i3] = (_bv.x - S.pos.hips.x) * H.k; hp[i3 + 1] = (_bv.y - S.ground) * H.k; hp[i3 + 2] = (_bv.z - S.pos.hips.z) * H.k; }
     }
-    act.stop(); S.mixer.uncacheAction(src);
+    act.stop(); if (fa) fa.stop(); if (core) MX.uncacheAction(src); else MX.uncacheRoot(S.s); // stopping restores the source skeleton's rest pose
     if (H) { // world displacement -> the hips' parent space; walk and run stay in place
-      const still = logical === 'walk' || logical === 'run', x0 = hp[0], z0 = hp[2];
+      const still = !!INPLACE[logical], x0 = hp[0], z0 = hp[2];
       for (let f = 0; f < n; f++) { const i3 = f * 3; _bv.set(H.p.x + (still ? x0 : hp[i3]), H.g + hp[i3 + 1], H.p.z + (still ? z0 : hp[i3 + 2])).applyMatrix4(H.inv); hp[i3] = _bv.x; hp[i3 + 1] = _bv.y; hp[i3 + 2] = _bv.z; }
       tracks.push(new T.VectorKeyframeTrack(H.b.name + '.position', times, hp));
     }
@@ -270,7 +273,7 @@ function clipsFor(id, one) {
   const C = def.bc || (def.bc = bakeCtx(id));
   for (const logical in CLIPMAP) { if (logical in C.out) continue; C.out[logical] = bakeClip(C, logical); if (one) return null; }
   const out = {}; for (const k in C.out) if (C.out[k]) out[k] = C.out[k];
-  def.bc = null; return (def.clips = out);
+  def.bc = null; def.clips = out; xbakeKick(); return out; // the hit, death, limp and crawl clips follow in the background (react.js)
 }
 function bakeSoon(id) {
   const def = CHARS[id]; if (!def || def.clips || def.baking) return; def.baking = 1;
@@ -382,25 +385,33 @@ function play(R, name, fade, speed) {
 }
 // state -> clip, mirrors animRig's inputs so actors don't need two code paths
 function animGLB(R, st, dt, kind) {
-  let n = 'idle', sp;
-  if (st.death > 0) n = st.deathClip || 'die';
+  let n = 'idle', sp, fade = .22;
+  // v24: st.pain is a big-pain clip (a hit worth 40 % of max health, BO1) or a knockdown, st.crawl the wounded crawl, st.limp a leg
+  // hit's limp; the extra clips only play once their bake is in (xAction). Every other hit is the springs (flinchApply)
+  if (st.pain && R.curName === st.pain && R.cur && R.cur.time >= R.cur.getClip().duration - .02) { st.pain = st.painNext || null; st.painNext = null; st.painJust = true; }
+  if (st.death > 0) { n = st.deathClip || 'die'; fade = .12; }
+  else if (st.pain && (R.actions[st.pain] || xAction(R, st.pain))) { n = st.pain; fade = .07; }
+  else if (st.crawl && xAction(R, st.crawl)) { n = st.crawl; fade = .3; }
   else if (st.attack > 0 && st.attackClip) n = st.attackClip;
-  else if (st.flinch > .45 && R.actions.hit) n = 'hit';
+  else if (st.flinch > .45 && R.actions.hit && !R.fl) n = 'hit'; // a rig without springs (none built yet, or no spine to lay them on) keeps v23's flinch clip
   else if (st.hold === 'plead') n = st.speed > .3 ? 'walk' : 'plead';
   else if (st.air) n = 'run';
   else if (st.speed > 4.6) { n = 'run'; sp = clamp(st.speed / 6.5, .7, 1.5); }
-  else if (st.speed > .35) { n = 'walk'; sp = clamp(st.speed / 1.6, .6, 1.8); }
+  else if (st.speed > .35) { n = st.limp && xAction(R, st.limp) ? st.limp : 'walk'; sp = clamp(st.speed / (n === 'walk' ? 1.6 : 1.1), .6, 1.8); }
   else if (st.aimHold) n = 'idle';
   if (n === 'hit' && R.curName === 'hit' && R.cur && R.cur.time >= R.cur.getClip().duration - .02) n = 'idle';
-  play(R, n, n === 'die' ? .12 : .22, sp);
-  if (st.attack > 0 && st.attackClip && R.curName === st.attackClip && st.attackJust) { R.cur.reset(); R.cur.play(); }
+  play(R, n, fade, sp);
+  if ((st.attack > 0 && st.attackClip && R.curName === st.attackClip && st.attackJust) || (st.painJust && st.pain && R.curName === st.pain)) { R.cur.reset(); R.cur.play(); }
+  st.painJust = false;
   R.mixer.update(dt); if (R.cust) custBase(R);
   R.crouchW = (R.crouchW || 0) + ((st.crouch && !(st.death > 0) ? 1 : 0) - (R.crouchW || 0)) * Math.min(1, dt * 8);
   if (R.crouchW > .01) crouchOverlay(R, R.crouchW);
+  if (R.fl) flinchApply(R, dt, false);
   // procedural aim layered over the clip: Tripo's 'shoot' preset is a run-and-gun sequence, so arms are posed by hand
-  const want = st.aimHold && !(st.death > 0) && !(st.attack > 0 && st.attackClip) ? 1 : 0;
+  const want = st.aimHold && !(st.death > 0) && !st.pain && !st.crawl && !(st.attack > 0 && st.attackClip) ? 1 : 0;
   R.aimW = (R.aimW || 0) + (want - (R.aimW || 0)) * Math.min(1, dt * 10);
   if (R.aimW > .01 || R.gunMount) aimOverlay(R, st);
+  if (R.fl) flinchApply(R, dt, true);
 }
 // every armed purger runs these each frame: scratch objects only, and one walk up the bone chain per call
 const _q1 = new T.Quaternion(), _q2 = new T.Quaternion(), _q3 = new T.Quaternion(), _v1 = new T.Vector3(), _v2 = new T.Vector3(), _v3 = new T.Vector3(), _v4 = new T.Vector3(), _m4 = new T.Matrix4();

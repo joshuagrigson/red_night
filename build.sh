@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 cd "$(dirname "$0")"
-JS="src/core.js src/pbr.js src/data.js src/world.js src/facade.js src/dressing.js src/city2.js src/interiors.js src/story.js src/combat.js src/ai.js src/traffic.js src/ambience.js src/actors.js src/chars.js src/landmarks.js src/player.js src/ui.js src/post.js src/digital.js src/main.js"
+JS="src/core.js src/pbr.js src/data.js src/world.js src/facade.js src/dressing.js src/city2.js src/interiors.js src/story.js src/combat.js src/ai.js src/traffic.js src/ambience.js src/actors.js src/chars.js src/react.js src/landmarks.js src/player.js src/ui.js src/post.js src/digital.js src/main.js"
 cat $JS > dist/game.js
 node --check dist/game.js
 # test.html only: the artifact host supplies the doctype and viewport for the published page; local phone runs need them to lay out like an iPhone
@@ -19,6 +19,9 @@ for f in optl/*.glb; do [ -e "$f" ] || continue; n=$(basename $f .glb); base64 -
 for f in optc/*.glb; do [ -e "$f" ] || continue; n=$(basename $f .glb); base64 -w0 $f > dist/assets/$n.glb.txt; done
 for f in optp/*.glb; do n=$(basename $f .glb); base64 -w0 $f > dist/assets/p_$n.glb.txt; done
 for f in opt/rn_*.glb; do n=$(basename $f .glb); n=${n#rn_}; base64 -w0 $f > dist/assets/$n.glb.txt; done
+# v24 sound samples (CC0, sources in sfx/manifest.json): AU.loadSamples reads the list, so it is the files actually shipped
+# (dist/assets/sfx also holds the v20 gun, foley and impact sounds, which live only there: the index lists every file in the folder)
+mkdir -p dist/assets/sfx; cp sfx/*.mp3 dist/assets/sfx/; (cd dist/assets/sfx && ls *.mp3 | sed 's/\.mp3$//' | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))') > dist/assets/sfx/index.json
 cp node_modules/three/examples/js/shaders/CopyShader.js dist/ex/shaders/CopyShader.js
 cp node_modules/three/examples/js/shaders/LuminosityHighPassShader.js dist/ex/shaders/LuminosityHighPassShader.js
 cp node_modules/three/examples/js/postprocessing/EffectComposer.js dist/ex/postprocessing/EffectComposer.js

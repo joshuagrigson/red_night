@@ -6,7 +6,7 @@ const P = {
   hp: 150, maxHp: 150, regenT: 0, dead: false, deadT: 0, ads: 0, adsHeld: false, cur: 0, slots: [null, null, null], fireCd: 0,
   reloadT: 0, reloadDur: 0, shellMode: false, cycleT: 0, switchT: 0, meleeT: 0, meleeDur: 0, meleeHitDone: false, quick: false, combo: 0,
   inCar: null, possT: 0, possMash: 0, hexT: 0, acidT: 0, punch: new T.Vector2(), shakeA: 0, bodyYaw: 0, steady: 4, inspectT: 0, landDip: 0,
-  score: 0, kills: 0, heads: 0, longest: 0, exorcisms: 0, lastFire: 0, sawRev: 0, eyeH: 1.66, recoilBuf: new T.Vector2(),
+  score: 0, kills: 0, heads: 0, longest: 0, exorcisms: 0, lastFire: 0, sawRev: 0, eyeH: 1.66, recoilBuf: new T.Vector2(), flinch: new T.Vector2(), vk: { p: 0, r: 0, t: 9, k: 0 }, invulT: 0, hitAcc: 0, blurT: 0,
   // feel: stride phase (a footfall at every multiple of pi) + its weight, landing spring, scoped sway, look rate for the gun's inertia
   strideA: 0, strideK: 0, stepT: -99, walking: false, landV: 0, swayAmp: 0, swayOx: 0, swayOy: 0, steadyK: 1, lookVX: 0, lookVY: 0, fireQ: 0,
   eye() { return new T.Vector3(this.pos.x, this.pos.y + this.eyeH, this.pos.z); },
@@ -435,7 +435,9 @@ function aimDir(spreadDeg, base, out) {
 // hits and fire from the eye at that point (cover right at the muzzle can still catch the round, as it should).
 const AIMB = { o: new T.Vector3(), d: new T.Vector3() }, _fA = new T.Vector3(), _fP = new T.Vector3(), _fO = new T.Vector3(), _fD = new T.Vector3();
 function aimBasis() {
-  const o = P.eyeInto(AIMB.o), d = P.fwdInto(AIMB.d);
+  // the flinch and the kick from being shot ride the aim as well as the view (both settle in under half a second), so the crosshair
+  // stays the truth: the sight moves with the screen and comes back, as in Black Ops Cold War
+  const o = P.eyeInto(AIMB.o), fy = P.yaw + P.flinch.x, fp = P.pitch + P.flinch.y + P.vk.p * P.vk.k, cpf = Math.cos(fp), d = AIMB.d.set(-Math.sin(fy) * cpf, Math.sin(fp), -Math.cos(fy) * cpf);
   if (G.camMode !== 'tpp' || G.state !== 'city' || P.inCar) return AIMB;
   const cp = camera.position, t0 = Math.max(0, (o.x - cp.x) * d.x + (o.y - cp.y) * d.y + (o.z - cp.z) * d.z); // start level with the head
   _fA.copy(cp).addScaledVector(d, t0); const h = hitscan(_fA, d, 320);
@@ -462,21 +464,24 @@ const rayW = (o, d, t) => (typeof rayGrid === 'function' ? rayGrid : rayBoxes)(o
 function nearRay(o, d, x, y, z, r, maxT) { const vx = x - o.x, vy = y - o.y, vz = z - o.z, t = vx * d.x + vy * d.y + vz * d.z; return t > -r && t < maxT + r && vx * vx + vy * vy + vz * vz - t * t < r * r; }
 function hitscan(o, d, maxR) {
   let best = null, bt = maxR;
-  for (const e of ENEMIES) { if (e.dead || !nearRay(o, d, e.pos.x, e.pos.y + 1 * e.scale, e.pos.z, 1.25 * e.scale, bt)) continue; const h = e.partAt(o, d); if (h && h.t < bt) { bt = h.t; best = { e, part: h.part, t: h.t }; } }
+  for (const e of ENEMIES) { if (e.dead || !nearRay(o, d, e.pos.x, e.pos.y + (e.down ? .3 : e.scale), e.pos.z, (e.down ? 1.6 : 1.25) * e.scale, bt)) continue; const h = e.partAt(o, d); if (h && h.t < bt) { bt = h.t; best = { e, part: h.part, zone: h.zone, side: h.side, t: h.t }; } }
   for (const w of WISPS) { const t = raySphere(o, d, w.pos, .45); if (t > 0 && t < bt) { bt = t; best = { w, t }; } }
-  for (const c of CIVS) { if (c.dead || !nearRay(o, d, c.pos.x, .95, c.pos.z, 1.2, bt)) continue; const h = c.partAt(o, d); if (h && h.t < bt) { bt = h.t; best = { civ: c, part: h.part, t: h.t }; } }
+  for (const c of CIVS) { if (c.dead || !nearRay(o, d, c.pos.x, .95, c.pos.z, 1.2, bt)) continue; const h = c.partAt(o, d); if (h && h.t < bt) { bt = h.t; best = { civ: c, part: h.part, zone: h.zone, side: h.side, t: h.t }; } }
   const ch = rayCar(o, d, bt); if (ch && ch.car !== P.inCar) { bt = ch.t; best = { car: ch.car, t: ch.t, n: ch.n, glass: ch.glass }; }
   const wh = rayW(o, d, bt);
   if (wh && (!best || wh.t < best.t)) return { world: true, t: wh.t, n: wh.n, box: wh.box };
   return best;
 }
 const COL_BRASS = C(0xc9a24a);
-const dmgAt = (st, d) => d <= st.r1 ? st.dmg : d >= st.r2 ? st.dmgMin : lerp(st.dmg, st.dmgMin, (d - st.r1) / (st.r2 - st.r1));
-// hit feedback. ui.js's marker ignores its head flag, so a headshot also gets a sharper crack and a bigger marker here
-function hitFX(killed, head) {
-  hitMarker(killed, head);
-  const el = $('hit'); if (el) { el.classList.toggle('head', !!head); el.style.transform = head ? 'scale(1.35)' : ''; }
-  if (head && AU.ok && !AU.play('headshot', { vol: .7 })) { AU.tone('triangle', 3600, 2300, .07, .16); AU.nz(.035, 'highpass', 7000, 9500, 1, .12); }
+// range falloff in steps, the way Call of Duty publishes it (BO6, MWIII): full damage to r1, a third of the drop to the midpoint,
+// two thirds to r2, the minimum past it. The same average as v23's ramp, but now a player can count shots to a kill
+const dmgAt = (st, d) => d <= st.r1 ? st.dmg : d > st.r2 ? st.dmgMin : st.dmg - (st.dmg - st.dmgMin) * (d <= (st.r1 + st.r2) * .5 ? 1 : 2) / 3;
+// hit feedback: the tiered marker (ui.js: blue on a plate, the break mark when one goes) and, on the head, the ping Call of Duty
+// has played since CoD4
+function hitFX(killed, head, e, dmg) {
+  const ar = e && e.plateHit ? (e.plateBroke ? 2 : 1) : 0; if (e) e.plateHit = e.plateBroke = 0;
+  hitMarker(killed, head, ar, dmg);
+  if (head && AU.ok && !AU.play('headshot_ding', { vol: .6 }) && !AU.play('headshot', { vol: .7 })) { AU.tone('triangle', 3600, 2300, .07, .16); AU.nz(.035, 'highpass', 7000, 9500, 1, .12); }
 }
 // thin cover a round can punch through once: max thickness (m) for a full-power round, scaled by the weapon class.
 // Car windows are the one that matters (enemies use cars as cover); a pellet never penetrates
@@ -489,6 +494,7 @@ function boxExit(b, o, d) { // where a ray leaves an AABB it is in or about to e
 // one bullet along o + d·t: damage what it meets, maybe carry on through thin cover (k = power left, d0 = distance so far)
 function shotRay(o, d, s, i, k, d0, depth) {
   const w = s.w, pel = w.pellets || 1, h = hitscan(o, d, 320 - d0), end = o.clone().addScaledVector(d, h ? h.t : 200);
+  if (CORPSES.length && i < 3) ragShot(o, d, h ? h.t : 120, dmgAt(s.st, d0) * k); // the bodies already down twitch as rounds go through
   if (!h) return end;
   const pw = pel > 1 || depth ? 0 : PENW[w.cls] || 0, dist = d0 + h.t;
   if (h.world) {
@@ -502,17 +508,16 @@ function shotRay(o, d, s, i, k, d0, depth) {
     if (pw && h.glass) return shotRay(_fA.copy(end).addScaledVector(d, .05), d, s, 1, k * .75, dist, 1); // in through a window: the ray now starts inside that car, which rayCar skips
     return end;
   }
-  if (h.civ) { burst(FXN, end, 7, 2.5, .5, .09, .04, COL.blood, 7, .3); h.civ.hurt(s.st.dmg * k * (h.part === 'head' ? w.head : 1), 'player'); return end; }
+  if (h.civ) { fleshHit(end, d, COL.blood, FXN, w.dmg / 30, h.zone === 'head', i < 3); fleshSnd(end, h.zone === 'head', i); const cd = dmgAt(s.st, dist) * k * zoneMul(w, h.zone); h.civ.hurt(cd, 'player', { w, dist, zone: h.zone, side: h.side, dir: d.clone(), big: cd > 90 }); return end; }
   if (h.w) { h.w.hp -= s.st.dmg * k; hitFX(h.w.hp <= 0, false); burst(FXA, end, 6, 3, .3, .2, .02, COL.ember, 0); return end; }
   const e = h.e, head = h.part === 'head';
-  let dmg = dmgAt(s.st, dist) * k;
-  dmg *= head ? w.head : h.part === 'limb' ? .88 : 1;
+  let dmg = dmgAt(s.st, dist) * k * zoneMul(w, h.zone);
   if (e.possessed) dmg *= .9;
   const col = e.type === 'reptile' ? COL.green : e.type === 'shifter' || e.type === 'vampire' ? COL.ichor : e.type === 'demon' ? COL.ember : e.type === 'witch' ? COL.purple : COL.blood;
   const fx = e.type === 'demon' || e.type === 'witch' ? FXA : FXN;
-  burst(fx, end, 7, 2.5, .5, .09, .04, col, 7, .3); if (head) burst(fx, end, 6, 3.4, .35, .07, .03, col, 6, .6); // a headshot throws a mist up and back
-  const killed = e.hurt(dmg, h.part, d, { w, big: dmg > 90, dist });
-  hitFX(killed, head); if (killed && dist > P.longest) P.longest = dist;
+  fleshHit(end, d, col, fx, w.dmg / 30, head, i < 3); fleshSnd(end, head, i);
+  const killed = e.hurt(dmg, h.part, d, { w, big: dmg > 90, dist, zone: h.zone, side: h.side, at: end });
+  hitFX(killed, head, e, dmg); if (killed && dist > P.longest) P.longest = dist;
   return end;
 }
 function fire() {
@@ -791,7 +796,7 @@ function updatePlayer(dt) {
   if (took('cam')) toggleCam();
   if (took('shoulder')) swapShoulder();
   // health regen
-  P.regenT -= dt; if (P.regenT <= 0 && P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + 32 * dt);
+  P.regenT -= dt; if (P.regenT <= 0 && P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + P.maxHp * .5 * dt); P.invulT = Math.max(0, P.invulT - dt); P.blurT = Math.max(0, P.blurT - dt);
   // body facing for third person
   const mv = Math.hypot(P.vel.x, P.vel.z);
   const aimingNow = P.ads > .1 || G.t - P.lastFire < 1.2 || P.meleeT > 0 || (w && w.kind === 'saw' && P.sawRev > .4);
@@ -848,13 +853,16 @@ const RMQ = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') :
 const _cq = new T.Quaternion(), _ce = new T.Euler(0, 0, 0, 'YXZ'), _cpv = new T.Vector3(), _csr = new T.Vector3(), _cof = new T.Vector3(), _cdr = new T.Vector3(), _ccW = new T.Vector3();
 function updateCamera(dt) {
   const s = P.s(); const w = s && s.w; const M = RMQ && RMQ.matches ? .3 : 1;
-  P.punch.x = damp(P.punch.x, 0, 10, dt); P.punch.y = damp(P.punch.y, 0, 10, dt);
+  P.punch.x = damp(P.punch.x, 0, 10, dt); P.punch.y = damp(P.punch.y, 0, 10, dt); P.flinch.x = damp(P.flinch.x, 0, 10, dt); P.flinch.y = damp(P.flinch.y, 0, 10, dt);
   P.shakeA = damp(P.shakeA, 0, 6, dt);
+  // the kick from a hit: in over 100 ms, back over 400 (Quake 3's DAMAGE_DEFLECT_TIME and DAMAGE_RETURN_TIME)
+  const vk = P.vk; vk.t += dt; const vkk = vk.k = (vk.t < .1 ? vk.t / .1 : Math.max(0, 1 - (vk.t - .1) / .4)) * M;
   // shake from layered sines rather than a fresh random offset every frame (a rumble, not static)
   const sh = P.shakeA * M, shx = (Math.sin(G.t * 41.3) * .6 + Math.sin(G.t * 23.7 + 1.3) * .4) * sh * .03, shy = (Math.sin(G.t * 37.9 + .7) * .6 + Math.sin(G.t * 29.1 + 2.1) * .4) * sh * .03;
   const bk = P.strideK * (1 - P.ads * .8) * M, sa = Math.sin(P.strideA);
   let roll = (P.slideCam || 0) * -.06 * M + sa * .004 * bk;
   if (P.possT > 0) roll += Math.sin(G.t * 2.7) * .25 * (M < 1 ? .4 : 1);
+  roll += vk.r * vkk;
   if (P.dead) roll = Math.min(1.2, P.deadT * .9);
   // fov: Settings > Field of view is the base for both views (0 = the default); sights keep their zoom ratio; a small
   // sprint / slide kick proportional to the base
@@ -869,7 +877,7 @@ function updateCamera(dt) {
     camera.rotation.z += shx; P.yaw = Math.atan2(-fx, -fz); P.pitch = -.12;
     return;
   }
-  const pitch = P.pitch + P.punch.y + shy, yaw = P.yaw + P.punch.x + shx;
+  const pitch = P.pitch + P.punch.y + P.flinch.y + vk.p * vkk + shy, yaw = P.yaw + P.punch.x + P.flinch.x + shx;
   if (G.camMode === 'fpp' || G.state === 'apt') {
     // head bob: the head drops into each footfall and drifts over the planted foot
     const amp = (P.sprint ? .034 : P.crouching ? .012 : .02) * bk, hx = sa * amp * .45;
@@ -893,6 +901,18 @@ function updateCamera(dt) {
   }
 }
 function shake(a) { P.shakeA = Math.min(1.2, P.shakeA + a); }
+// Being shot (v24). The view kicks the way Quake 3 did it, the IW engine's ancestor (cg_playerstate.c CG_DamageFeedback): a
+// 5-10 deg kick scaled by 40/health, so low health kicks harder, pitched by how far in front the shooter is and rolled away from
+// their side. Ours is gentler (2-6 deg, less on a phone, halved down the sights). Hip fire also takes a real flinch of the aim,
+// up to 1.5 deg at 40 damage, which settles back in ~0.3 s; down the sights the crosshair stays put, as in Black Ops Cold War
+function hitKick(dmg, from) {
+  const hp = Math.max(1, P.hp) / P.maxHp * 100, d = dmg / P.maxHp * 100, ads = P.ads;
+  const kick = clamp(d * (hp < 40 ? 1 : 40 / hp), 2, 6) * (IS_TOUCH ? .7 : 1) * (1 - ads * .5) * Math.PI / 180;
+  let front = 1, left = 0;
+  if (from) { const dx = from.x - P.pos.x, dz = from.z - P.pos.z, L = Math.hypot(dx, dz); if (L > .01) { front = (-dx * Math.sin(P.yaw) - dz * Math.cos(P.yaw)) / L; left = (-dx * Math.cos(P.yaw) + dz * Math.sin(P.yaw)) / L; } }
+  P.vk.p = kick * front * .8; P.vk.r = -kick * left; P.vk.t = 0;
+  if (ads < .5) { const f = Math.min(1.5, 1.5 * dmg / 40) * (1 - ads) * Math.PI / 180; P.flinch.x += rand(-1, 1) * f; P.flinch.y += rand(.3, 1) * f; }
+}
 
 /* ---------------- third person body animation ---------------- */
 function updateBody(dt) {
@@ -940,7 +960,7 @@ function driveUpdate(dt) {
   c.update(dt, I); P.pos.copy(c.pos); P.vel.set(-Math.sin(c.h) * c.speed, 0, -Math.cos(c.h) * c.speed);
   AU.engineSet(true, c.speed);
   INP.lookX = 0; INP.lookY = 0;
-  P.regenT -= dt; if (P.regenT <= 0 && P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + 32 * dt);
+  P.regenT -= dt; if (P.regenT <= 0 && P.hp < P.maxHp) P.hp = Math.min(P.maxHp, P.hp + P.maxHp * .5 * dt); P.invulT = Math.max(0, P.invulT - dt); P.blurT = Math.max(0, P.blurT - dt);
   if (took('cam')) toggleCam();
   for (const k of DRV_DROP) PRESS.delete(k); // presses made at the wheel don't fire on the way out (C used to crouch you on exit)
 }

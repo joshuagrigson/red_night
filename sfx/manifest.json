@@ -1,0 +1,326 @@
+[
+ {
+  "file": "flesh_hit_1.mp3",
+  "bytes": 4747,
+  "dur_s": 0.366,
+  "license": "CC0 1.0 (both layers)",
+  "source": "Kenney, \"Impact Sounds\" https://kenney.nl/assets/impact-sounds + qubodup, \"Punch\" https://opengameart.org/content/punch",
+  "from": "impactPunch_heavy_002.ogg + qubodupPunch03.ogg (layered)",
+  "use": "bullet hits a body (NPC or player); pick one at random, rate 0.9-1.1; layer the existing imp_* for armour"
+ },
+ {
+  "file": "flesh_hit_2.mp3",
+  "bytes": 4747,
+  "dur_s": 0.366,
+  "license": "CC0 1.0 (both layers)",
+  "source": "Kenney, \"Impact Sounds\" https://kenney.nl/assets/impact-sounds + qubodup, \"Punch\" https://opengameart.org/content/punch",
+  "from": "impactPunch_heavy_000.ogg + qubodupPunch05.ogg (layered)",
+  "use": "bullet hits a body (NPC or player); pick one at random, rate 0.9-1.1; layer the existing imp_* for armour"
+ },
+ {
+  "file": "flesh_hit_3.mp3",
+  "bytes": 4747,
+  "dur_s": 0.366,
+  "license": "CC0 1.0 (both layers)",
+  "source": "Kenney, \"Impact Sounds\" https://kenney.nl/assets/impact-sounds + qubodup, \"Punch\" https://opengameart.org/content/punch",
+  "from": "impactPunch_heavy_004.ogg + qubodupPunch01.ogg (layered)",
+  "use": "bullet hits a body (NPC or player); pick one at random, rate 0.9-1.1; layer the existing imp_* for armour"
+ },
+ {
+  "file": "flesh_head_1.mp3",
+  "bytes": 5060,
+  "dur_s": 0.392,
+  "license": "CC0 1.0",
+  "source": "qubodup, \"Punch\" https://opengameart.org/content/punch + EZduzziteh, \"Squish Sounds Effects\" https://opengameart.org/content/squish-sounds-effects + Kenney, \"Impact Sounds\" https://kenney.nl/assets/impact-sounds",
+  "from": "qubodupPunch05.ogg + squishsplat_impact.mp3 + impactPunch_medium_001.ogg (layered)",
+  "use": "headshot impact on the victim (under the existing headshot ding)"
+ },
+ {
+  "file": "gore_splat_1.mp3",
+  "bytes": 6000,
+  "dur_s": 0.47,
+  "license": "CC0 1.0",
+  "source": "Independent.nu via qubodup, \"8 wet squish, slurp impacts\" https://opengameart.org/content/8-wet-squish-slurp-impacts",
+  "from": "impactsplat07",
+  "use": "head pop / gib (big-gun headshot), close range only"
+ },
+ {
+  "file": "body_fall_1.mp3",
+  "bytes": 9762,
+  "dur_s": 0.784,
+  "license": "CC0 1.0",
+  "source": "Kenney, \"Impact Sounds\" https://kenney.nl/assets/impact-sounds + Kenney, \"RPG Audio\" https://kenney.nl/assets/rpg-audio",
+  "from": "cloth1.ogg + impactSoft_heavy_003.ogg + impactSoft_heavy_001.ogg (layered)",
+  "use": "corpse hits the ground: fire it when the death clip lands (Death01 ~0.9 s, Hit_Knockback ~0.3 s)"
+ },
+ {
+  "file": "body_fall_2.mp3",
+  "bytes": 9762,
+  "dur_s": 0.784,
+  "license": "CC0 1.0",
+  "source": "Kenney, \"Impact Sounds\" https://kenney.nl/assets/impact-sounds + Kenney, \"RPG Audio\" https://kenney.nl/assets/rpg-audio",
+  "from": "cloth3.ogg + impactSoft_heavy_001.ogg + impactSoft_heavy_004.ogg (layered)",
+  "use": "corpse hits the ground: fire it when the death clip lands (Death01 ~0.9 s, Hit_Knockback ~0.3 s)"
+ },
+ {
+  "file": "hit_tick_1.mp3",
+  "bytes": 985,
+  "dur_s": 0.052,
+  "license": "CC0 1.0",
+  "source": "Kenney, \"Interface Sounds\" https://kenney.nl/assets/interface-sounds",
+  "from": "tick_002",
+  "use": "hitmarker tick (every hit)"
+ },
+ {
+  "file": "hit_tick_2.mp3",
+  "bytes": 1298,
+  "dur_s": 0.078,
+  "license": "CC0 1.0",
+  "source": "Kenney, \"UI Audio\" https://kenney.nl/assets/ui-audio",
+  "from": "click4",
+  "use": "hitmarker tick, alternate"
+ },
+ {
+  "file": "kill_thunk.mp3",
+  "bytes": 2239,
+  "dur_s": 0.157,
+  "license": "CC0 1.0",
+  "source": "Kenney, \"Interface Sounds\" https://kenney.nl/assets/interface-sounds",
+  "from": "bong_001",
+  "use": "kill-confirm: heavier low thunk layered with hit_tick_1 when a hit kills"
+ },
+ {
+  "file": "headshot_ding.mp3",
+  "bytes": 2239,
+  "dur_s": 0.157,
+  "license": "CC0 1.0",
+  "source": "Kenney, \"Interface Sounds\" https://kenney.nl/assets/interface-sounds",
+  "from": "glass_002",
+  "use": "headshot ding (sample alternative to the synthesized one)"
+ },
+ {
+  "file": "kill_chime.mp3",
+  "bytes": 4433,
+  "dur_s": 0.34,
+  "license": "CC0 1.0",
+  "source": "Kenney, \"Interface Sounds\" https://kenney.nl/assets/interface-sounds",
+  "from": "confirmation_001",
+  "use": "optional kill / streak chime (UI-styled, use sparingly)"
+ },
+ {
+  "file": "pain_m_1.mp3",
+  "bytes": 6941,
+  "dur_s": 0.549,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 6.94-7.36s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "pain_m_2.mp3",
+  "bytes": 11329,
+  "dur_s": 0.914,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 8.36-9.12s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "pain_m_3.mp3",
+  "bytes": 12583,
+  "dur_s": 1.019,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 27.58-28.46s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "pain_m_4.mp3",
+  "bytes": 7254,
+  "dur_s": 0.575,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 29.86-30.32s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "pain_m_5.mp3",
+  "bytes": 13524,
+  "dur_s": 1.097,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 31.52-32.48s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "pain_m_6.mp3",
+  "bytes": 10076,
+  "dur_s": 0.81,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 38.82-39.48s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "pain_m_7.mp3",
+  "bytes": 9449,
+  "dur_s": 0.758,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 40.4-41.02s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "pain_m_8.mp3",
+  "bytes": 16031,
+  "dur_s": 1.306,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 17.44-18.6s",
+  "use": "male pain grunt on a hit (rate-limit: ~1 per 0.6 s per actor)"
+ },
+ {
+  "file": "death_m_1.mp3",
+  "bytes": 18853,
+  "dur_s": 1.541,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 0.5-1.88s",
+  "use": "male death groan (longer)"
+ },
+ {
+  "file": "death_m_2.mp3",
+  "bytes": 17912,
+  "dur_s": 1.463,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 35.96-37.3s",
+  "use": "male death groan (longer)"
+ },
+ {
+  "file": "death_m_3.mp3",
+  "bytes": 21987,
+  "dur_s": 1.802,
+  "license": "CC0 1.0",
+  "source": "thebardofblasphemy, \"grunts of male death and pain\" https://opengameart.org/content/grunts-male-death-and-pain",
+  "from": "death pain grunts.wav 47.38-49.04s",
+  "use": "male death groan (longer)"
+ },
+ {
+  "file": "pain_f_1.mp3",
+  "bytes": 10076,
+  "dur_s": 0.81,
+  "license": "CC0 1.0",
+  "source": "Nocturnal_Vanguard, \"Female Hurt Grunts & Groans\" https://opengameart.org/content/female-hurt-grunts-groans",
+  "from": "female_hurt_grunts_groans_1.ogg 0.44-1.12s",
+  "use": "female pain grunt / groan"
+ },
+ {
+  "file": "pain_f_2.mp3",
+  "bytes": 8822,
+  "dur_s": 0.705,
+  "license": "CC0 1.0",
+  "source": "Nocturnal_Vanguard, \"Female Hurt Grunts & Groans\" https://opengameart.org/content/female-hurt-grunts-groans",
+  "from": "female_hurt_grunts_groans_1.ogg 2.1-2.68s",
+  "use": "female pain grunt / groan"
+ },
+ {
+  "file": "pain_f_3.mp3",
+  "bytes": 6314,
+  "dur_s": 0.496,
+  "license": "CC0 1.0",
+  "source": "Nocturnal_Vanguard, \"Female Hurt Grunts & Groans\" https://opengameart.org/content/female-hurt-grunts-groans",
+  "from": "female_hurt_grunts_groans_1.ogg 3.72-4.1s",
+  "use": "female pain grunt / groan"
+ },
+ {
+  "file": "pain_f_4.mp3",
+  "bytes": 15405,
+  "dur_s": 1.254,
+  "license": "CC0 1.0",
+  "source": "Nocturnal_Vanguard, \"Female Hurt Grunts & Groans\" https://opengameart.org/content/female-hurt-grunts-groans",
+  "from": "female_hurt_grunts_groans_1.ogg 4.94-6.08s",
+  "use": "female pain grunt / groan"
+ },
+ {
+  "file": "pain_f_5.mp3",
+  "bytes": 10703,
+  "dur_s": 0.862,
+  "license": "CC0 1.0",
+  "source": "Nocturnal_Vanguard, \"Female Hurt Grunts & Groans\" https://opengameart.org/content/female-hurt-grunts-groans",
+  "from": "female_hurt_grunts_groans_1.ogg 7.34-8.08s",
+  "use": "female pain grunt / groan"
+ },
+ {
+  "file": "pain_f_6.mp3",
+  "bytes": 11956,
+  "dur_s": 0.967,
+  "license": "CC0 1.0",
+  "source": "Nocturnal_Vanguard, \"Female Hurt Grunts & Groans\" https://opengameart.org/content/female-hurt-grunts-groans",
+  "from": "female_hurt_grunts_groans_1.ogg 9.38-10.28s",
+  "use": "female pain grunt / groan"
+ },
+ {
+  "file": "pain_f_7.mp3",
+  "bytes": 11643,
+  "dur_s": 0.94,
+  "license": "CC0 1.0",
+  "source": "Nocturnal_Vanguard, \"Female Hurt Grunts & Groans\" https://opengameart.org/content/female-hurt-grunts-groans",
+  "from": "female_hurt_grunts_groans_1.ogg 11.7-12.54s",
+  "use": "female pain grunt / groan"
+ },
+ {
+  "file": "heartbeat_slow.mp3",
+  "bytes": 22301,
+  "dur_s": 1.829,
+  "license": "CC0 1.0",
+  "source": "bart, \"Heartbeat sounds\" https://opengameart.org/content/heartbeat-sounds",
+  "from": "heartbeat_slow_0.wav",
+  "use": "low-health loop (HP < 40%): loop it, gain rises as HP falls"
+ },
+ {
+  "file": "heartbeat_fast.mp3",
+  "bytes": 14464,
+  "dur_s": 1.176,
+  "license": "CC0 1.0",
+  "source": "bart, \"Heartbeat sounds\" https://opengameart.org/content/heartbeat-sounds",
+  "from": "heartbeat_fast_0.wav",
+  "use": "critical-health loop (HP < 20%)"
+ },
+ {
+  "file": "heartbeat_single.mp3",
+  "bytes": 16345,
+  "dur_s": 1.332,
+  "license": "CC0 1.0",
+  "source": "qubodup, \"Heartbeat (single sound)\" https://opengameart.org/content/heartbeat-single-sound",
+  "from": "heartbeat.mp3_.flac",
+  "use": "one lub-dub, to schedule at any rate from HP (alternative to the two loops; no MP3 loop-gap issue)"
+ },
+ {
+  "file": "breath_tired.mp3",
+  "bytes": 38915,
+  "dur_s": 3.213,
+  "license": "CC0 1.0",
+  "source": "mikeask, \"Breathing Tired\" https://opengameart.org/content/breathing-tired",
+  "from": "breathing tired.wav",
+  "use": "laboured breathing under the heartbeat while regenerating"
+ },
+ {
+  "file": "crack_1.mp3",
+  "bytes": 2239,
+  "dur_s": 0.157,
+  "license": "CC0 1.0 (generated by tools/build_sfx.py in this research run)",
+  "source": "Red Night combat research",
+  "from": "synthesised N-wave 0.4 ms + 120 ms high-passed noise",
+  "use": "near-miss supersonic crack: play with the existing whiz_1/2 when an enemy round passes within ~1.5 m (rifles only)"
+ },
+ {
+  "file": "crack_2.mp3",
+  "bytes": 2866,
+  "dur_s": 0.209,
+  "license": "CC0 1.0 (generated by tools/build_sfx.py in this research run)",
+  "source": "Red Night combat research",
+  "from": "synthesised N-wave 0.6 ms + 180 ms high-passed noise",
+  "use": "near-miss supersonic crack: play with the existing whiz_1/2 when an enemy round passes within ~1.5 m (rifles only)"
+ }
+]

@@ -25,7 +25,7 @@ npm install            # three@0.128, @gltf-transform/cli, meshoptimizer, playwr
 cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
 ```
 
-- **Concatenation order** (from `build.sh`; the order matters because these are globals, not modules): `core pbr data world facade dressing city2 interiors story combat ai traffic ambience actors chars landmarks player ui post digital main`. `tools/dupcheck.sh` runs inside `build.sh` and fails the build on a duplicate top-level name (a second function with the same name silently replaces the first).
+- **Concatenation order** (from `build.sh`; the order matters because these are globals, not modules): `core pbr data world facade dressing city2 interiors story combat ai traffic ambience actors chars react landmarks player ui post digital main`. `tools/dupcheck.sh` runs inside `build.sh` and fails the build on a duplicate top-level name (a second function with the same name silently replaces the first).
 - **Why the `.glb.txt` files:** the artifact host serves `.txt` but not `.glb`, so every GLB ships as base64 text. Loaders call `fetch(url + '.txt')`, then `atob`, then `GLTFLoader.parse`.
 - **Publishing:** the page is `dist/red-night.html`. Assets are published alongside it under `assets/...`.
   - A publish adds or replaces only the files it sends; it never deletes the rest.
@@ -35,7 +35,25 @@ cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
 - **Test scripts and scratch paths:** the Python test scripts (`*.py` at the root) are headless Playwright runs using swiftshader. They write screenshots to a hard-coded scratch path (`/tmp/claude-0/...`); change `OUT=` in each.
 - **Headless speed:** the game loop runs at about 0.05× real time headless. AI tests step update functions directly, with `requestAnimationFrame` stubbed.
 
-## v23: what changed (read this first)
+## v24: what changed (read this first)
+
+Hit realism, "more Call of Duty". Every number has a source in `docs/v23-hit-realism/r1-cod-reference.md` (CoD's own GSC scripts for BO1, MW3-11 and CoD4, plus MWIII/BO6 patch notes).
+- **Damage model** (`ZONE_MUL`, `zoneMul` in data.js; `bodyZone` in actors.js): zones head, neck, chest, belly, upper arm, lower arm, thigh, shin from the hit point's height and its side of the spine plane, with per-class multipliers (pistol/SMG, AR/LMG, `dmr` for the Tundra, sniper, shotgun, `npc`). The head stays each gun's own `head`. `partAt` returns `{t, part, zone, side}`; `part` (head/body/limb) is what the old code keys on, and arms count as limb now. Range falloff is a step function (`dmgAt`: full to r1, a third of the drop to the midpoint, two thirds to r2, the minimum past it), the same average as the old ramp.
+- **Player side** (main.js `damagePlayer`, player.js `hitKick`, post.js `blur`, ui.js): a Quake 3 view kick scaled by 40/health, which moves the aim too and comes back (Cold War); a hip-fire aim flinch up to 1.5°; IW5's hit blur (0.8 s) and splatter curve 1.2(1−h)² decaying 0.3/s; breathing below `LOWHP` (35 %); the IW5 last-chance window (one burst worth 10 % of max health buys 0.5 / 1.0 / 0.4 s with no damage); regen 50 % of max per second after the 4 s delay (MWIII's 75 hp/s for 150 hp).
+- **Hitmarkers in tiers** (`hitMarker(kill, head, armor, dmg)`): white hit, yellow ×1.25 head with a ding, red kill with a thunk, blue on armor, the cracked-plate mark `#hitBrk` with a crunch. Sounds through `AU.hitmark(kind)`.
+- **Council Sweepers wear plates** (`e.plates` 150 = 3 × 50): 60 % of any round that isn't to the head goes to the plates; each plate that goes cracks (`plateCrack`). Until they're gone a sweeper only flinches.
+- **NPC reactions** (new `src/react.js`, after chars.js in the build):
+  - Springs on the bones for every hit (`hitSpring`/`flinchApply`, adapted from HurtFlinch.js, MIT), BO1's weight min(1, (dmg% + 50)/250): torso rocked along the round, head snap, arm knocked back, hip drop on a leg hit. Torso, head and legs go on before `aimOverlay` (the gun stays on target), arms after.
+  - A big hit (> 40 % of max health, BO1) plays a directional pain clip (`painClip`), IW5's 0.5 s block after; a blast or a close shotgun blast knocks a person flat and they get up (`knock` → `getup`); a leg hit limps for 3 s at ¾ speed; an arm hit throws the next 0.6 s of their fire 4° wide.
+  - IW5's long death (`goDown`/`crawl`): a leg hit leaving a person under 40 % puts them down to crawl away (never within 4.4 m of you, then a 7-13 s street-wide gate); one more hit finishes them, otherwise they bleed out in 4-20 s.
+  - Deaths: the death clip for 35 % (max 0.9 s), then a Verlet ragdoll (`Ragdoll`, adapted from Ragdoll.js, MIT) with BO1's impulse table; a blast, a shotgun inside 5 m or a sniper round go to the ragdoll at once. Cap 6 live (4 on phones), frozen once down; rounds and blasts still move bodies already down (`ragShot`, `blastCorpses`); a blood pool spreads from where the torso lies 2 s on (IW5).
+- **The clips** are Joshua's Quaternius UAL Pro pack (CC0), already on the library skeleton: `optc/ual_hits.glb` and `optc/ual_wounded.glb` (the lite packs; under them the hands hold the library idle's finger pose). `XCLIP` names the 17 used; they bake in the background, one clip per 40 ms tick, bodies on the street first (`xbakeStep`), on a mixer of their own per clip (the core bakes share `RT.src.mixer`, and three's action cache broke when the two took turns on one). Until a body's clips are in, it uses the springs, the plain fall and a walk.
+- **Blood** (`fleshHit`): a mist sized to the gun (dmg/30), a puff out of the far side and a spray decal on whatever is within 2.5 m behind (`SURF.blood`). Blood colours are now converted to linear (`CS`, `BLOOD`): the old raw hex rendered hot pink.
+- **Gore setting** (Settings → Gore, `G.gore`, saved as `rn_gore`, **off by default**, Joshua's call). Off: the blood above, no head pops (v23 always popped them). On: big-gun headshots pop the head; BO1's shotgun gib odds (100 / 75 / 50 / 25 % inside 2.8 / 5.1 / 6.9 / 8.4 m), blasts of 165+ and the chainsaw take a limb (`goreDeath`).
+- **Sound** (`sfx/`, 36 CC0 samples, sources in `sfx/manifest.json`; build.sh copies them to `dist/assets/sfx/` with `index.json`): flesh hits, headshot impact, ding, ticks, kill thunk, body falls, male and female pain and death voices (`humanVox`; a headshot kill is silent, as in IW5 and BO1), breathing, near-miss cracks (an enemy round inside 1 m from a rifle; whiz inside 3 m).
+- **Tests:** `scratchpad/v24test/hits.py` and `hits2.py` (zones, multipliers, falloff, plates, pain, ragdolls, crawl, knockdown, gore, costs), `poses.py` (close-ups of bodies at rest). Measured on the desktop headless: 6 live ragdolls 0.23 ms a frame; 30 bodies flinching at once 0.4 ms on top of their animation; a pack clip bakes in 1-5 ms.
+
+## v23: what changed
 
 New assets from Joshua's Tripo models (Drive folder "Red Night models"):
 - **Five guns** (`opt/rn_*.glb`, `MODELS` + `WDEF` + `CLS`): Warden 9 (optic-ready pistol), Sovereign (gilded .50 hand cannon), Bubblegum Vex (pink Vector-style PDW), Ember Breacher (semi-auto shotgun), Venom (LMG). Sovereign, Ember and Venom have solid sight blocks with no notch, so `builtinDot` is on and their `sight` anchor sits ~1.2 cm over the block (measured: the tallest geometry in front of the sight near the centre line). Ember and Venom are chunky: `len` .82 and .9.
@@ -119,6 +137,7 @@ New assets from Joshua's Tripo models (Drive folder "Red Night models"):
 | traffic.js | AI cars: lane following, intersection waypoints, braking, panic, carjack |
 | actors.js | The `Enemy` class, `OUTFITS`, `SKINS`, `HAIR_COLS` |
 | chars.js | Skinned Tripo characters (see "Characters" below) |
+| react.js | v24 hit reactions: the UAL clip packs and their background bake, spring flinches, the Verlet ragdoll, corpses and blood pools, gore |
 | landmarks.js | Five district landmark GLBs |
 | player.js | Player, camera (FOV 64/66, third-person distance 2.25), viewmodel `buildVM()`, hitscan, loadout `G.load` |
 | ui.js | Menus, character creator (`charChanged`), weapons wall (`smRefresh`/`pvGun`), HUD, minimap |
@@ -205,7 +224,7 @@ All 40 weapons have Tripo meshes (24 new in v19, 5 in v23). The loading and cali
 8. **Headless realism:** time runs at 0.05×, so any timing-based test (reloads, AI reaction, firing, aim-down-sights) must step update functions manually (`updatePlayer(dt)` for the player).
 9. **AI and gameplay ideas.** v21 shipped frags, fleeing civilians, gang cars and HEAT. Still open:
    - real CoD reload animations (the current ones are procedural transforms).
-   - v24 (planned): hit realism. Staged assets are in `staging/` (UAL Pro animation packs, CC0 sound effects, research notes); the README there says what must be true before they ship (LoopOnce sampling, now done; lazy baking).
+   - v24 shipped hit realism (above). Still open from the research: the dying NPC firing a pistol from its back (no clip for it), per-faction voice banks, through-body penetration, distance-delayed gun reports.
 10. **v23 looks to watch:** the storefront model's back wall is a blurry collage (only seen from its alley); the Ember still reads big at the hip; dressed bodies are identical copies (one of each in the crowd mix for that reason); the T-pose bodies' off hand sits palm-down under the gun when aiming.
 
 ## Conventions Joshua expects

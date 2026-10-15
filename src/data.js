@@ -72,6 +72,20 @@ for (const [id, cls, name, sub, model, s] of WDEF) {
   if (W[id].auto) W[id].action = 'auto';
   if (s.action) W[id].action = s.action;
 }
+W.tundra.zt = 'dmr'; // a semi-auto marksman rifle: two to the chest, one to the head, like CoD's
+// v24: damage by hit zone and weapon class, after Call of Duty's tables (CoD4-MW3 wiki, MWIII and BO6 patch notes), distilled:
+// a rifle round counts for more in the upper chest and neck, a pellet for less in the legs. The head is each gun's own `head`.
+// 'npc' is the people's fire at each other (head x2 since v22)
+const ZONE_MUL = {
+  pistol: { neck: 1.15, chest: 1, belly: 1, uarm: 1, larm: .9, thigh: .9, shin: .88 },
+  ar: { neck: 1.2, chest: 1.1, belly: 1, uarm: 1, larm: .9, thigh: .9, shin: .88 },
+  dmr: { neck: 1.2, chest: 1.05, belly: 1, uarm: 1, larm: .9, thigh: .9, shin: .88 },
+  sniper: { neck: 1.5, chest: 1.5, belly: 1.1, uarm: 1, larm: 1, thigh: 1, shin: .9 },
+  shotgun: { neck: 1, chest: 1, belly: 1, uarm: 1, larm: 1, thigh: .8, shin: .8 },
+  npc: { neck: 1.2, chest: 1, belly: 1, uarm: .9, larm: .85, thigh: .85, shin: .8 },
+};
+ZONE_MUL.smg = ZONE_MUL.pistol; ZONE_MUL.lmg = ZONE_MUL.ar; ZONE_MUL.special = ZONE_MUL.pistol;
+const zoneMul = (w, zone) => zone === 'head' ? (w ? w.head : 2) : ((w && ZONE_MUL[w.zt || w.cls]) || ZONE_MUL.npc)[zone] || 1;
 
 const ATT = {
   optic: [

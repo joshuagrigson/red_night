@@ -361,16 +361,24 @@ AMB.autoBarks = function (dt) {
     const dx = e.pos.x - P.pos.x, dz = e.pos.z - P.pos.z, d2 = dx * dx + dz * dz;
     if (d2 < 45 * 45 && this.barkT <= 0 && e.mode !== 'disguise') {
       let k = null;
-      if (e.dead && !s.dead) k = e.human && Math.random() < .7 ? 'death' : null;
+      if (e.dead && !s.dead) k = e.human && e.lastZone !== 'head' && Math.random() < .7 ? 'death' : null; // a headshot kill makes no sound (IW5 and BO1 skip the death vocal)
       else if (!e.dead && e.aware && !s.aw && Math.random() < .75) k = ALERT_BARK[e.type];
       else if (!e.dead && s.hp - e.hp > 12 && Math.random() < .55) k = PAIN_BARK[e.type];
       else if (!e.dead && !e.aware && e.human && e.type !== 'sweeper' && d2 < 20 * 20 && Math.random() < .006) k = 'mutter';
-      if (k) { this._int = 1; this.bark(e.pos, k); this._int = 0; this.barkT = .7; }
+      if (k) { this._int = 1; if (!humanVox(e.pos, k, e.human, voiceFem(e.R, e.o))) this.bark(e.pos, k); this._int = 0; this.barkT = .7; }
     }
     s.aw = e.aware; s.hp = e.hp; s.dead = e.dead;
   }
 };
 
+// people's pain and death in real voices once the samples are in (a male and a female set); the synth bark otherwise
+function humanVox(pos, k, human, fem) {
+  if (!human || (k !== 'death' && k !== 'grunt')) return false;
+  const n = k === 'death' ? (fem ? 'pain_f_4' : 'death_m_' + rint(1, 3)) : (fem ? 'pain_f_' + rint(1, 7) : 'pain_m_' + rint(1, 8)), sp = spatial(pos);
+  return AU.play(n, { vol: (k === 'death' ? .8 : .62) * sp.vol, pan: sp.pan, rate: k === 'death' && fem ? .9 : rand(.94, 1.06), verb: .15 });
+}
+// a scanned body's voice follows the body (a random gender roll only shapes the box rig)
+const voiceFem = (R, o) => R && R.glb ? /female|witch|hackf|nomadf|corpof/.test(R.glb) : !!(o && o.gender === 'f');
 /* ---------- low health: heartbeat + muffling ---------- */
 AMB.lowHealth = function (k) { this.lhExt = clamp(k || 0, 0, 1); this.lhT = G.t; };
 AMB.beat = function (t, k) {
@@ -613,6 +621,8 @@ AMB.tick10 = function (dt, st) {
   A.mfl.frequency.setTargetAtTime(20000 * Math.pow(.045, Math.pow(A.lh, 1.2)), now, .25);
   if (A.lh > .06 && st === 'city' && !P.dead) { if (A.hbNext < now) A.hbNext = now + .05; while (A.hbNext < now + .3) { A.beat(A.hbNext, A.lh); A.hbNext += 60 / (64 + 56 * A.lh); } }
   if (P.dead && !A.wasDead && st === 'city') A.flatline(); A.wasDead = P.dead;
+  // under the near-death line, laboured breathing: a breath, then 0.1-0.9 s, again (CoD4 breathes below 35 %)
+  if (st === 'city' && !P.dead && P.maxHp && P.hp / P.maxHp < LOWHP) { if (now > (A.brNext || 0)) A.brNext = now + (AU.play('breath_tired', { vol: .42 }) ? 3.2 + rand(.1, .9) : 9); } else A.brNext = 0;
   A.autoBarks(dt);
   A.wasSt = st;
 };

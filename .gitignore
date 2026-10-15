@@ -10,3 +10,5 @@ dist/assets/*.glb.txt
 dist/raw/
 shots/
 __pycache__/
+# v24: build.sh copies the new samples in from sfx/ (the older dist/assets/sfx files are tracked and stay so)
+dist/assets/sfx/*.mp3

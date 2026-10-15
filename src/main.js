@@ -135,10 +135,21 @@ function updatePicks(dt) {
     }
   }
 }
+// near-death line: the splatter climbs, breathing starts and the last-chance window gets longer below it (CoD4 breathes at 35 %)
+const LOWHP = .35;
 function damagePlayer(dmg, from, e) {
   if (P.dead || G.state !== 'city') return;
-  P.hp -= dmg; P.regenT = 4; G.dmgFlash = .6; shake(Math.min(.5, dmg / 40)); AU.hurt(); damageDir(from);
-  if (P.hp <= 0) killPlayer(e && e.type ? npcName(e) : 'the night');
+  // The IW campaign's last-chance window (IW5 _gameskill.gsc, Regular): one burst worth a tenth of your health (a blow, a blast,
+  // a shotgun's pellets: the damage inside a tenth of a second) opens a short spell where nothing lands, 0.5 s while you're healthy, 1 s for the hit that takes you under the
+  // near-death line, 0.4 s once you're under it. It's a big part of why a CoD death feels fair: you can't drop from full in a blink
+  if (P.invulT > 0) return;
+  const h0 = P.hp / P.maxHp;
+  P.hp -= dmg; P.regenT = 4; G.dmgFlash = Math.min(.9, .3 + dmg / P.maxHp * 3); shake(Math.min(.35, dmg / 60)); AU.hurt(); damageDir(from);
+  P.blurT = Math.max(P.blurT, .8 * clamp(dmg / (P.maxHp * .1), .35, 1)); // IW5: a 3 px blur on every hit, gone in 0.8 s
+  if (P.hp <= 0) { killPlayer(e && e.type ? npcName(e) : 'the night'); return; }
+  hitKick(dmg, from);
+  if (G.t - (P.hitAccT || -9) > .1) P.hitAcc = 0; P.hitAccT = G.t; // one burst: a shotgun's pellets, a blast, a blow
+  P.hitAcc += dmg; if (P.hitAcc > P.maxHp * .1) { const h1 = P.hp / P.maxHp; P.invulT = h0 > LOWHP ? (h1 > LOWHP ? .5 : 1) : .4; P.hitAcc = 0; }
 }
 function startPossession() {
   if (P.possT > 0 || P.dead) return;
@@ -324,7 +335,7 @@ function loop(now) {
   const still = st === 'paused' || st === 'pauseload' || st === 'smith';
   if (!still) G.stillN = 0; else if (G.stillN > 2) { if (st === 'smith') pvRender(dt); return; } else G.stillN = (G.stillN || 0) + 1;
   if (POST.on) {
-    POST.fin.uniforms.time.value = G.t; POST.fin.uniforms.hurt.value = (G.dmgFlash || 0) + (P.possT > 0 ? .6 : 0) + (P.suppressed || 0) * .22;
+    POST.fin.uniforms.time.value = G.t; POST.fin.uniforms.hurt.value = (G.dmgFlash || 0) + (P.possT > 0 ? .6 : 0) + (P.suppressed || 0) * .22; POST.fin.uniforms.blur.value = G.state === 'photo' ? 0 : (P.blurT || 0) / .8;
     POST.composer.render();
   } else {
     renderer.clear(); renderer.render(scene, camera);

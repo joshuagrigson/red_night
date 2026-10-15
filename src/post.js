@@ -16,14 +16,15 @@ function setupPost() {
     const bloom = new T.UnrealBloomPass(new T.Vector2(w, h), .72, .5, .74);
     comp.addPass(bloom);
     const fin = new T.ShaderPass({
-      uniforms: { tDiffuse: { value: null }, time: { value: 0 }, ca: { value: .0012 }, grain: { value: .028 }, hurt: { value: 0 }, aug: { value: G.aug } },
+      uniforms: { tDiffuse: { value: null }, time: { value: 0 }, ca: { value: .0012 }, grain: { value: .028 }, hurt: { value: 0 }, blur: { value: 0 }, aug: { value: G.aug } },
       vertexShader: 'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
-      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform float ca; uniform float grain; uniform float hurt; uniform float aug; varying vec2 vUv;
+      fragmentShader: `uniform sampler2D tDiffuse; uniform float time; uniform float ca; uniform float grain; uniform float hurt; uniform float blur; uniform float aug; varying vec2 vUv;
         vec3 toSRGB(vec3 c){ return mix(c*12.92, pow(c, vec3(.41666))*1.055-.055, step(.0031308, c)); }
         float h(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
         void main(){
           vec2 d = vUv - .5; float r2 = dot(d,d); vec2 off = d * (ca + aug * .005 + hurt*.02) * (.4 + r2*3.0);
           vec3 c = vec3(texture2D(tDiffuse, vUv + off).r, texture2D(tDiffuse, vUv).g, texture2D(tDiffuse, vUv - off).b);
+          if (blur > .01) { vec2 b = vec2(.0016, .0028) * blur; c = mix(c, (c + texture2D(tDiffuse, vUv + vec2(b.x, 0.)).rgb + texture2D(tDiffuse, vUv - vec2(b.x, 0.)).rgb + texture2D(tDiffuse, vUv + vec2(0., b.y)).rgb + texture2D(tDiffuse, vUv - vec2(0., b.y)).rgb) * .2, min(1., blur * 1.4)); } // the blur of a hit (IW5: 3 px, gone in 0.8 s)
           c = toSRGB(clamp(c, 0.0, 1.0));
           float l = dot(c, vec3(.299,.587,.114));
           vec3 rl = mix(c, c * vec3(.95, .99, 1.05), (1.0 - l) * .3);  // real: cool night shadows,

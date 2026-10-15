@@ -57,19 +57,24 @@ function tgOk(e, t) {
 function tgAim(t, out) {
   if (t === PLY) return out.set(P.pos.x, P.pos.y + P.eyeH + (P.crouching ? -.25 : -.4), P.pos.z);
   if (t.isCiv) return out.set(t.pos.x, t.st.crouch ? .75 : 1.2, t.pos.z);
+  if (t.down) return out.set(t.pos.x, .3, t.pos.z); // crawling: aim at the ground
   const k = t.hH / 1.68 * t.R.root.scale.y; return out.set(t.pos.x, t.pos.y + (t.st.crouch ? .9 : 1.2) * k, t.pos.z);
 }
 // head height: what a sightline has to reach
 function tgEye(t, out) {
   if (t === PLY) return out.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z);
   if (t.isCiv) return out.set(t.pos.x, t.st.crouch ? 1.0 : 1.55, t.pos.z);
+  if (t.down) return out.set(t.pos.x, .45, t.pos.z);
   return t.headPos(out);
 }
 function tgHurt(t, dmg, by, part, dir) {
   if (t === PLY) { damagePlayer(dmg, by.pos, by); return P.dead; }
   if (t.isCiv) { t.hurt(dmg * 2, by); return t.dead; }
-  return t.hurt(dmg * (part === 'head' ? 2 : part === 'limb' ? .8 : 1), part || 'body', dir || null, by.npcSrc);
+  return t.hurt(dmg * (part === 'head' ? 2 : part === 'limb' ? .85 : 1), part || 'body', dir || null, npcHitSrc(by, part === 'head' ? 'head' : null, 0, null));
 }
+// a fighter's round as the victim sees it: who, and where it landed (the hit reaction and the blood read zone, side and at).
+// One object per fighter, refilled per hit: hurt() copies what it keeps
+function npcHitSrc(e, zone, side, at) { const s = e.npcSrc; s.zone = zone; s.side = side; s.at = at; return s; }
 // the camera's horizontal view, once a frame: fights nobody can see or reach are resolved on paper (farExchange)
 const CAMF = { t: -1, x: 0, z: -1, cos: .5 };
 function camFrame() {
@@ -640,17 +645,18 @@ function enemyFire(e, dmg, dist, moving) {
     spread = (1.3 + dist * .04 + tv * .45 + e.supp * 4 + (moving ? 1.6 : 0)) * (e.shotsAt > 1 ? 1 : 1.4);
   }
   if (e.wst && e.wst.spread) spread *= e.wst.spread;
+  if (e.armT > G.t) spread += 4; // just took one in the arm
   if (e.human) { const fr = lineFriend(e, TG, from, _efT, spread); if (fr) { holdLine(e, fr, from, _efT); return; } }
   const d = _efD.subVectors(_efT, from).normalize(); const r = Math.sqrt(Math.random()) * spread * Math.PI / 180, a = Math.random() * TAU;
   const right = _efR.set(-d.z, 0, d.x).normalize(), up = _efU.crossVectors(right, d);
   d.addScaledVector(right, Math.cos(a) * Math.tan(r)).addScaledVector(up, Math.sin(a) * Math.tan(r)).normalize();
   // what's in the way?
-  const L = 120; let tHit = L, what = 0, ch = null, civ = null, box = null, hitE = null, part = null;
+  const L = 120; let tHit = L, what = 0, ch = null, civ = null, box = null, hitE = null, part = null, zone = null, side = 0;
   const wh = rayGrid(from, d, L); if (wh) { tHit = wh.t; what = 1; box = wh.box; _efN.copy(wh.n); }
   const cr = rayCar(from, d, tHit); if (cr && !(P.inCar && cr.car === P.inCar)) { tHit = cr.t; what = 2; ch = cr; }
   const pt = G.inside && !e.clubber ? -1 : rayVCapsule(from, d, P.pos.x, P.pos.z, P.pos.y + .1, P.pos.y + (P.crouching ? 1.15 : 1.7), P.inCar ? .9 : .35);
   if (pt > 0 && pt < tHit && !P.dead) { tHit = pt; what = 3; }
-  for (const o of ENEMIES) { if (o === e || o.dead || !rayNear(from, d, o.pos.x, o.pos.y + 1 * o.scale, o.pos.z, 1.25 * o.scale, tHit)) continue; const h = o.partAt(from, d); if (h && h.t < tHit) { tHit = h.t; what = 5; hitE = o; part = h.part; } }
+  for (const o of ENEMIES) { if (o === e || o.dead || !rayNear(from, d, o.pos.x, o.pos.y + (o.down ? .3 : o.scale), o.pos.z, (o.down ? 1.6 : 1.25) * o.scale, tHit)) continue; const h = o.partAt(from, d); if (h && h.t < tHit) { tHit = h.t; what = 5; hitE = o; part = h.part; zone = h.zone; side = h.side; } }
   for (const c of CIVS) { if (c.dead || !rayNear(from, d, c.pos.x, .95, c.pos.z, 1.2, tHit)) continue; const tc = rayVCapsule(from, d, c.pos.x, c.pos.z, .1, 1.7, .32); if (tc > 0 && tc < tHit) { tHit = tc; what = 4; civ = c; } }
   const end = _efE.copy(from).addScaledVector(d, tHit), seen = TG === PLY || !e.unseen || !(TG.isCiv ? unseenAt(TG.pos.x, TG.pos.z) : TG.unseen);
   if (seen) { tracer(from, end, 0xff6060, 1.3); FXA.emit(from.x, from.y, from.z, 0, 0, 0, .06, .5, .7, COL.spark, 1); }
@@ -658,13 +664,18 @@ function enemyFire(e, dmg, dist, moving) {
   if (what === 3) { if (P.inCar) { carHit(P.inCar, dmg * 2, end, _efN.copy(d).negate(), false, e); damagePlayer(dmg * .5, e.pos, e); } else damagePlayer(dmg, e.pos, e); return; }
   if (what === 2) { carHit(ch.car, dmg * 2, end, ch.n, ch.glass, e); }
   else if (what === 4) { civ.hurt(dmg * 2, e); return; }
-  else if (what === 5) { if (seen && e.camD2 < 60 * 60) burst(FXN, end, 5, 2, .4, .08, .05, COL.blood, 6); hitE.hurt(dmg * (part === 'head' ? 2 : part === 'limb' ? .8 : 1), part, d, e.npcSrc); if (hitE === TG) return; }
+  else if (what === 5) { if (seen && e.camD2 < 60 * 60) fleshHit(end, d, COL.blood, FXN, .8, part === 'head', hitE.camD2 < 35 * 35); hitE.hurt(dmg * zoneMul(null, zone), part, d, npcHitSrc(e, zone, side, end)); if (hitE === TG) return; }
   else if (what === 1 && seen) { _efH.t = tHit; _efH.n = _efN; _efH.box = box; impact(end, _efN, surfOfHit(_efH, end), { size: .14, fx: e.camD2 < 70 * 70, snd: e.camD2 < 50 * 50 }); }
   // a miss on a fighter still tells them who's shooting
   if (TG !== PLY && !TG.isCiv && TG !== hitE) { tgAim(TG, _efT); const v = _efT.sub(from), tt = clamp(v.dot(d), 0, tHit); if (v.addScaledVector(d, -tt).lengthSq() < 2.4) { TG.supp = Math.min(1, (TG.supp || 0) + .25); if (TG.fac === 'looter') looterScare(TG, e.pos); else squadGrudge(TG, e, 20); } }
   // near miss: bullet crack past your head (into a wall, or on out into the night)
   const v = _efT.set(P.pos.x - from.x, P.pos.y + P.eyeH - from.y, P.pos.z - from.z); const tt = clamp(v.dot(d), 0, tHit); const miss = v.addScaledVector(d, -tt).length();
-  if (miss < 2.2 && !P.dead) { const sp = spatial(e.pos); AU.play('whiz_' + (1 + Math.floor(Math.random() * 2)), { vol: .7, pan: sp.pan }) || AU.nz(.08, 'highpass', 6000, 2500, 1, .3, sp.pan); P.suppressed = Math.min(1, (P.suppressed || 0) + .25); }
+  if (miss < 3 && !P.dead && what !== 3) {
+    const sp = spatial(e.pos), close = miss < 1, rifle = !!e.heavyGun || (e.gunId && W[e.gunId] && /ar|lmg|sniper/.test(W[e.gunId].cls));
+    AU.play('whiz_' + (1 + Math.floor(Math.random() * 2)), { vol: close ? .75 : .5, pan: sp.pan }) || AU.nz(.08, 'highpass', 6000, 2500, 1, close ? .3 : .18, sp.pan);
+    if (close && rifle) { AU.play('crack_' + (1 + Math.floor(Math.random() * 2)), { vol: .7, pan: sp.pan }) || AU.nz(.012, 'highpass', 9000, 6000, .6, .35, sp.pan); P.punch.x += rand(-1, 1) * .004; P.punch.y += .003; }
+    P.suppressed = Math.min(1, (P.suppressed || 0) + (close ? .35 : .2));
+  }
 }
 function civFire(e, c) {
   tracer(_av1.set(e.pos.x, 1.38, e.pos.z), _av2.set(c.pos.x, rand(.9, 1.5), c.pos.z), 0xff6060, 1.2); AU.farShot(e.pos, false); if (Math.random() < .55) c.hurt(18, e);
@@ -785,6 +796,7 @@ function fragBlast(g) {
   }
   for (const c of CIVS) { if (c.dead) continue; const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z); if (d < FRAG_R && aiLos(c0, _av3.set(c.pos.x, 1, c.pos.z))) c.hurt(20 + 160 * fall(d), g.owner); }
   for (const c of CARS) { if (c.gone || c === P.inCar) continue; const dx = c.pos.x - p.x, dz = c.pos.z - p.z, d = Math.hypot(dx, dz); if (d < 6) carHit(c, 280 * (1 - d / 6), _av4.set(c.pos.x - dx * .4, .8, c.pos.z - dz * .4), _av5.set(-dx, 0, -dz).normalize(), false, g.owner); }
+  blastCorpses(p, FRAG_R, 200);
   if (g.atP || pd < FRAG_R) HEAT.add(.25); makeNoise(p, 55, 'blast', g.owner); trafficPanic(p); // the street's own fights don't light you up
 }
 
@@ -860,22 +872,26 @@ class Civ {
     if (!this.fm) { const fm = this.fm = []; this.R.root.traverse(o => { const m = o.isMesh && o.material; if (m && !fm.some(f => f.m === m)) { fm.push({ m, t: m.transparent, o: m.opacity }); m.transparent = true; } }); }
     for (const f of this.fm) f.m.opacity = f.o * k;
   }
-  hurt(dmg, src) {
+  // hit: a player's round, { w, dist, zone, side, dir, big } (its blood is already thrown); others leave it out
+  hurt(dmg, src, hit) {
     if (this.dead) return; this.hp -= dmg; this.st.flinch = 1; if (this.scared) this.panic(this.threat); else this.panic(_av3.set(this.pos.x + rand(-3, 3), 0, this.pos.z + rand(-3, 3)));
-    burst(FXN, _av3.set(this.pos.x, 1.2, this.pos.z), 8, 2.5, .5, .09, .04, COL.blood, 7, .3);
+    if (!hit) burst(FXN, _av3.set(this.pos.x, 1.2, this.pos.z), 8, 2.5, .5, .09, .04, COL.blood, 7, .3);
+    else if (this.R.glb) hitSpring(this.R, Math.min(1, (dmg / this.maxHp * 100 + 50) / 250), hit.zone, hit.side, hit.dir, this.face);
     if (this.hp <= 0) {
-      this.dead = true; this.deadT = 0; this.st.deathClip = 'fall'; this.st.crouch = 0; this.vel.set(0, 0, 0);
+      this.dead = true; this.deadT = 0; this.st.deathClip = this.R.glb ? deathClip(this.R) : 'fall'; this.st.crouch = 0; this.vel.set(0, 0, 0);
       if (this.fm) for (const f of this.fm) { f.m.opacity = f.o; f.m.transparent = f.t; } // shot in the doorway
-      decal(_av3.set(this.pos.x, .02, this.pos.z), _avUp, rand(1.4, 2.2), splatTex, 0x5a0010);
+      const zone = hit ? hit.zone : 'chest', side = hit ? hit.side : 0; this.lastZone = zone;
+      if (this.R.glb) corpseInit(this, hit && hit.dir, zone, side, hit, dmg); else decal(_av3.set(this.pos.x, .02, this.pos.z), _avUp, rand(1.4, 2.2), splatTex, BLOOD.pool);
+      goreDeath(this, zone, side, hit, dmg);
       if (src === 'player') { addScore(-250, 'CIVILIAN DOWN'); flashBanner('CIVILIAN DOWN', 'That one was a person', 1.4); P.civKills = (P.civKills || 0) + 1; HEAT.add(1); }
       else if (src && src.type && G.t - _civFeedT > 8 && this.pos.distanceToSquared(P.pos) < 60 * 60) { _civFeedT = G.t; feed(`<b>${npcName(src)}</b> · killed a civilian`); }
       for (const c of CIVS) if (!c.dead && c !== this && c.pos.distanceToSquared(this.pos) < 400) c.panic(this.pos); // a body hits the ground: everyone near runs
     }
   }
-  partAt(o, d) { if (this.dead) return null; const th = raySphere(o, d, _av4.set(this.pos.x, 1.64, this.pos.z), .17); const tb = rayVCapsule(o, d, this.pos.x, this.pos.z, .35, 1.38, .3); if (th > 0 && (tb < 0 || th <= tb + .2)) return { t: th, part: 'head' }; if (tb > 0) return { t: tb, part: 'body' }; return null; }
+  partAt(o, d) { if (this.dead) return null; const th = raySphere(o, d, _av4.set(this.pos.x, 1.64, this.pos.z), .17); const tb = rayVCapsule(o, d, this.pos.x, this.pos.z, .35, 1.38, .3); if (th > 0 && (tb < 0 || th <= tb + .2)) return { t: th, part: 'head', zone: 'head', side: 0 }; if (tb > 0) return bodyZone(o, d, tb, this.pos, 0, 1, this.face, 1); return null; }
   update(dt) {
     this.t += dt; const d2p = this.pos.distanceToSquared(P.pos), far = d2p > 45 * 45;
-    if (this.dead) { this.deadT += dt; this.st.death = this.deadT * 2.2; if (this.R.glb && this.deadT < 5) animGLB(this.R, this.st, dt); else if (!this.R.glb) animRig(this.R, this.st, dt); this.sync(); return; }
+    if (this.dead) { this.deadT += dt; this.st.death = this.deadT * 2.2; if (!corpseUpdate(this, dt)) { if (this.R.glb && this.deadT < 5) animGLB(this.R, this.st, dt); else if (!this.R.glb) animRig(this.R, this.st, dt); } this.sync(); return; }
     // threats: nearby awake monsters, anyone shooting is handled by noise events
     if (this.mode === 'walk' && (this.chk = (this.chk || 0) - dt) <= 0) { this.chk = .4; for (const e of ENEMIES) if (!e.dead && e.pos.distanceToSquared(this.pos) < 14 * 14 && scaresCivs(e)) { this.panic(e.pos); break; } }
     const tv = this.tv.set(0, 0, 0); let faceTo = null;
@@ -933,7 +949,7 @@ class Civ {
     this.sync();
   }
   sync() { this.R.root.position.copy(this.pos); if (this.R.crouchW) this.R.root.position.y -= this.R.crouchW * .17; this.R.root.rotation.y = this.face; } // knees bent behind a car: drop the hips like Enemy.sync does
-  remove() { this.gone = true; scene.remove(this.R.root); rigDispose(this.R); const i = CIVS.indexOf(this); if (i >= 0) CIVS.splice(i, 1); if (this.grp) this.grp.members = this.grp.members.filter(m => m !== this); }
+  remove() { this.gone = true; corpseGone(this); scene.remove(this.R.root); rigDispose(this.R); const i = CIVS.indexOf(this); if (i >= 0) CIVS.splice(i, 1); if (this.grp) this.grp.members = this.grp.members.filter(m => m !== this); }
 }
 /* a group walks a loop around a block on the sidewalk (centre line 6 m in from the road centre),
    turning at corners or crossing the street to the next block; some groups stand and chat */

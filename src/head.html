@@ -100,7 +100,10 @@ button:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
 #hit:before,#hit:after{content:"";position:absolute;left:12px;top:-2px;width:2px;height:30px;background:#fff;transform:rotate(45deg);box-shadow:0 0 4px #000}
 #hit:after{transform:rotate(-45deg)}
 #hit.kill:before,#hit.kill:after{background:var(--blood)}
-#hit.head{transform:scale(1.35)}#hit.head:before,#hit.head:after{background:var(--volt)}#hit.head.kill:before,#hit.head.kill:after{background:var(--blood)}
+#hit.head:before,#hit.head:after{background:var(--volt)}#hit.head.kill:before,#hit.head.kill:after{background:var(--blood)}
+#hit.armor:before,#hit.armor:after{background:#4aa8ff;box-shadow:0 0 5px rgba(20,90,255,.9)}
+#hitBrk{position:absolute;left:50%;top:50%;width:16px;height:20px;margin:22px 0 0 -8px;opacity:0;pointer-events:none;background:linear-gradient(115deg,#4aa8ff 0 44%,transparent 44% 56%,#4aa8ff 56%);clip-path:polygon(50% 0,100% 18%,100% 62%,50% 100%,0 62%,0 18%);filter:drop-shadow(0 0 3px #000)}
+#hitBrk.go{animation:brk .9s ease-out}@keyframes brk{0%{transform:scale(1.5)}30%{transform:scale(1)}100%{transform:scale(1) translateY(6px)}}
 #ret{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:120px;height:120px;opacity:0}
 #prompt{position:absolute;left:50%;top:62%;transform:translateX(-50%);font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;background:rgba(8,8,10,.72);border:1px solid var(--edge2);padding:8px 16px;opacity:0;transition:opacity .2s;white-space:nowrap;text-shadow:none}
 #prompt kbd{font-family:var(--f-mono);font-weight:400;color:#0e0d12;background:var(--volt);padding:1px 7px;margin-right:10px}
@@ -366,7 +369,7 @@ body.touch #feed div:nth-child(n+4){display:none}
   <div class="cnr" id="hTR"><div id="score">0</div><div id="kills">0 KILLS</div><div id="feed"></div></div>
   <div class="cnr" id="hBR"><div id="wName">—</div><div id="ammo">0<small> / 0</small></div><div id="slots"><span id="s1">1</span><span id="s2">2</span><span id="s3">MELEE</span></div></div>
   <div id="cross"><i class="t"></i><i class="b"></i><i class="l"></i><i class="r"></i><i class="d"></i></div>
-  <div id="hit"></div>
+  <div id="hit"></div><div id="hitBrk"></div>
   <canvas id="ret" width="120" height="120"></canvas>
   <div id="dirs"><i></i><i></i><i></i><i></i></div>
   <div id="prompt"></div>
@@ -444,6 +447,7 @@ body.touch #feed div:nth-child(n+4){display:none}
   <div class="setRow full"><div class="setLab"><b>Augment</b><span>How much of the net layer you see</span></div><div class="sld aug" id="sAug" role="slider" tabindex="0" aria-label="Augment"><i><b></b><u></u></i></div><output id="vAug"></output></div>
   <div class="setRow full"><div class="setLab"><b>Field of view</b><span>Default lets the camera choose</span></div><div class="sld" id="sFov" role="slider" tabindex="0" aria-label="Field of view"><i><b></b><u></u></i></div><output id="vFov"></output></div>
   <div class="setRow full" id="rowSn"><div class="setLab"><b>Monsters</b><span>Demons, vampires, witches and worse</span></div><div class="chips"><button class="chip" data-sn="off">Off</button><button class="chip" data-sn="rare">Rare</button><button class="chip" data-sn="classic">Classic</button></div></div>
+  <div class="setRow full" id="rowGore"><div class="setLab"><b>Gore</b><span>Off: blood, like Call of Duty. On: heads and limbs come off</span></div><div class="chips"><button class="chip" data-gore="off">Off</button><button class="chip" data-gore="on">On</button></div></div>
   <div class="setSub full"><span class="eyebrow">Controls</span></div>
   <div class="setRow full dOnly"><div class="setLab"><b>Sensitivity</b><span>Mouse</span></div><div class="chips"><button class="chip" data-s="0.6">Low</button><button class="chip" data-s="1">Mid</button><button class="chip" data-s="1.5">High</button><button class="chip" data-s="2.2">Max</button></div></div>
   <div class="setRow full tOnly"><div class="setLab"><b>Look speed</b><span>How far a swipe turns you</span></div><div class="sld" id="sLook" role="slider" tabindex="0" aria-label="Look speed"><i><b></b><u></u></i></div><output id="vLook"></output></div>

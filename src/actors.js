@@ -27,6 +27,9 @@ const HAIR_COLS = [0x111014, 0x4a2a16, 0xd9b26a, 0xff2a6d, 0x05d9e8, 0xe8e8f0];
 /* ---------- the night's people: the masked purgers and four kinds of ordinary people at war with each other.
    The supernatural is a setting (Settings > Monsters): off, rare (the default: a few after 10 PM) or classic (v21) ---------- */
 G.supernatural = ['off', 'rare', 'classic'].indexOf(store('sn')) >= 0 ? store('sn') : 'rare';
+// Gore (v24, Joshua's call: off by default). Off is Call of Duty's blood: mist sized to the gun, spray on the wall behind, a pool
+// under the body. On adds the over-the-top: big guns pop heads, close shotgun blasts and explosions take limbs (Black Ops 1's rules)
+G.gore = store('gore') === 'on' ? 'on' : 'off';
 function setSupernatural(v) {
   if (['off', 'rare', 'classic'].indexOf(v) < 0) return G.supernatural;
   G.supernatural = v; store('sn', v);
@@ -270,6 +273,15 @@ const ET = {
 };
 const ENEMIES = [], WISPS = [], PROJ = [];
 let enemyId = 0;
+// where on the body a hit landed: Call of Duty's zones (head, neck, upper and lower torso, upper and lower arm, thigh, shin) from
+// the hit point's height in 1.68 m-person units and its side of the spine plane (side +1 is the body's right). `part` is the
+// coarse read the rest of the game keys on: head, body (neck and torso) or limb (arms and legs)
+function bodyZone(o, d, t, pos, hy, hk, face, sc) {
+  const x = o.x + d.x * t - pos.x, z = o.z + d.z * t - pos.z, u = (o.y + d.y * t - hy) / hk;
+  const lat = (x * Math.cos(face) - z * Math.sin(face)) / sc, wide = Math.abs(lat) > .2;
+  const zone = u > 1.46 ? (Math.abs(lat) < .13 ? 'neck' : 'chest') : u > 1.08 ? (wide ? 'uarm' : 'chest') : u > .84 ? (wide ? 'larm' : 'belly') : u > .46 ? 'thigh' : 'shin';
+  return { t, part: zone === 'neck' || zone === 'chest' || zone === 'belly' ? 'body' : 'limb', zone, side: lat > 0 ? 1 : -1 };
+}
 // rigs built this frame: past the budget, a deferred one waits for the next frame
 const BUILDS = { t: -1, n: 0 };
 function buildsNow() { if (BUILDS.t !== G.t) { BUILDS.t = G.t; BUILDS.n = 0; } return BUILDS; }
@@ -308,7 +320,7 @@ class Enemy {
       const L = FLOOK[this.fac], fc = new T.Color(FACTIONS[this.fac].color).getHex();
       Object.assign(o, { top: pick(L.top), bottom: pick(L.bottom), accent: fc, hairCol: pick(HAIRN), sleeve: 1 });
       if (type === 'looter') o.hood = STD(0x1c1c20, .9);
-      if (type === 'sweeper') { o.visor = 1; o.hair = 'buzz'; o.gender = 'm'; this.armor = .45; }
+      if (type === 'sweeper') { o.visor = 1; o.hair = 'buzz'; o.gender = 'm'; this.plates = 150; }
       this.rig = pick(L.rigs); if (this.rig === 'female_lo') o.gender = 'f';
       this.ranged = Math.random() < (opts && opts.ranged !== undefined ? opts.ranged : L.ranged);
       if (this.ranged) { // a gun outside the boot arsenal only once its model is in (desktops stream them all; a phone, the ones you've carried)
@@ -407,7 +419,8 @@ class Enemy {
     { const C = camFrame(), cx = this.pos.x - camera.position.x, cz = this.pos.z - camera.position.z; this.camD2 = cx * cx + cz * cz; this.unseen = this.camD2 > 4900 && cx * C.x + cz * C.z < Math.sqrt(this.camD2) * C.cos; if (this.R.pivot) this.R.pivot.visible = bodyInView(this.pos.x, this.pos.z, this.camD2); }
     if (this.R.pieces) { const pv = this.camD2 < PIECE_D2(); if (this.R.piecesOn !== pv) piecesShow(this.R, pv); } // past ~26 m the body colour and the faction rim carry the read
     if (this.dead) {
-      this.deadT += dt; this.st.death = this.deadT * 2.2; this.st.speed = 0; if (this.R.glb) { if (this.deadT < 6) animGLB(this.R, this.st, dt); } else animRig(this.R, this.st, dt);
+      this.deadT += dt; this.st.death = this.deadT * 2.2; this.st.speed = 0;
+      if (!(this.R.root.visible && corpseUpdate(this, dt))) { if (this.R.glb) { if (this.deadT < 6) animGLB(this.R, this.st, dt); } else animRig(this.R, this.st, dt); }
       const sink = this.killedByP || !this.human ? 7 : 14; // the street's own dead lie there a while: it's how you know what happened
       if (this.deadT > sink) { const k = clamp((this.deadT - sink) / 1.5, 0, 1); this.R.root.position.y = -k * .6; if (k >= 1) this.remove(); }
       return;
@@ -415,12 +428,15 @@ class Enemy {
     if (this.bleed > 0) { this.bleed -= dt; this.hurt(9 * dt, null, null, BLEED); if (Math.random() < .3) FXN.emit(this.pos.x, 1.1, this.pos.z, rand(-.3, .3), -1, rand(-.3, .3), .6, .08, .05, COL.blood, 1, 6); if (this.dead) return; }
     this.st.flinch = Math.max(0, this.st.flinch - dt * 4);
     if (this.slowT > 0) this.slowT -= dt;
+    if (this.st.pain && G.t > (this.painEnd || 0)) this.st.pain = this.st.painNext = null; // a clip that never got to play (off screen) lets go
+    if (this.limpT > 0) this.limpT -= dt; this.st.limp = this.limpT > 0 ? (this.limpSide > 0 ? 'limp_r' : 'limp_l') : null;
     // far LOD: freeze animation, still move
     const far = d2 > 90 * 90;
-    if (this.human) fighterScan(this, dt); else if (this.mode !== 'disguise') perceive(this, dt, dist);
-    this.ai(dt, dist);
+    if (this.down) this.crawl(dt);
+    else if (this.st.pain) { this.vel.x = damp(this.vel.x, 0, 9, dt); this.vel.z = damp(this.vel.z, 0, 9, dt); } // a big hit stops them where they stand
+    else { if (this.human) fighterScan(this, dt); else if (this.mode !== 'disguise') perceive(this, dt, dist); this.ai(dt, dist); }
     // movement & collision
-    const sp = this.slowT > 0 ? .5 : 1;
+    const sp = (this.slowT > 0 ? .5 : 1) * (this.limpT > 0 ? .75 : 1);
     this.pos.x += this.vel.x * dt * sp; this.pos.z += this.vel.z * dt * sp;
     if (this.type !== 'witch' && this.type !== 'demon') this.pos.y = 0;
     if (!this.unseen || (this.colT = (this.colT || 0) - dt) <= 0) { this.colT = .1; collideCircle(this.pos, this.r * this.scale, Math.max(0, this.pos.y), 1.8); } // far and off screen: a few times a second
@@ -580,23 +596,29 @@ class Enemy {
     burst(FXA, this.pos.clone().setY(1.4), 40, 5, .9, .25, .02, COL.ember, 0, .3, 1, 1); AU.growl(spatial(this.pos).pan, 1);
   }
   partAt(o, d) {
-    // returns {t, part} for a ray, or null
+    // returns {t, part, zone, side} for a ray (bodyZone), or null
     if (this.dead || (this.R && !this.R.root.visible)) return null;
+    if (this.down && this.R.glb) return this.downPart(o, d); // flat on the ground: the standing capsule would be all air
     const sc = this.scale, hy = this.pos.y, hk = this.hH / 1.68 * this.R.root.scale.y; const hp = this.headPos(_eHP); // every ray tests every enemy: no allocation
     const th = raySphere(o, d, hp, .17 * hk);
     const tb = rayVCapsule(o, d, this.pos.x, this.pos.z, hy + .35 * hk, hy + 1.38 * hk, (this.type === 'witch' ? .45 : .3) * sc);
-    if (th > 0 && (tb < 0 || th <= tb + .2)) return { t: th, part: 'head' };
-    if (tb > 0) { const y = o.y + d.y * tb - hy; return { t: tb, part: y < .8 * hk ? 'limb' : 'body' }; }
+    if (th > 0 && (tb < 0 || th <= tb + .2)) return { t: th, part: 'head', zone: 'head', side: 0 };
+    if (tb > 0) return bodyZone(o, d, tb, this.pos, hy, hk, this.face, sc);
     return null;
   }
   // src: the player's {w...} (or 'car'), a fighter's npcSrc {by}, a damage-over-time {dot, by}, true (unowned), or nothing.
   // Whoever it was holds the grudge; only the player's kills score
   hurt(amount, part, dir, src) {
     if (this.dead || this.waitT >= 0) return false; // not materialised yet
+    if (this.down && G.t < this.down.inv) return false; // IW5: the fall to the ground is untouchable
     const dot = src === true || !!(src && src.dot), by = !src || src === true ? null : src === 'car' ? PLY : typeof src !== 'object' ? null : src.by !== undefined ? src.by : 'w' in src ? PLY : null;
     if (this.mode === 'disguise' && !dot) { if (this.type === 'shifter') this.transform(); else this.reveal(); }
-    if (this.armor && part !== 'head' && !dot) amount *= 1 - this.armor; // plates: only a headshot gets the full round
-    this.hp -= amount; if (!dot) this.st.flinch = Math.min(1, this.st.flinch + .5);
+    const so = src && typeof src === 'object' ? src : null, zone = (so && so.zone) || (part === 'head' ? 'head' : part === 'limb' ? 'thigh' : 'chest'), side = (so && so.side) || 0;
+    // Council Sweepers wear plates (v24, after Warzone and Cold War): 150 of armour in three plates of 50 soak 60 % of any round that
+    // isn't to the head. Each plate that goes cracks (the blue break mark); until they're all gone a sweeper only flinches
+    this.plateHit = this.plateBroke = 0;
+    if (this.plates > 0 && zone !== 'head' && !dot) { const n0 = Math.ceil(this.plates / 50), ab = Math.min(this.plates, amount * .6); this.plates -= ab; amount -= ab; this.plateHit = 1; if (Math.ceil(this.plates / 50) < n0) { this.plateBroke = 1; plateCrack(this, so && so.at); } }
+    this.hp -= amount; if (!dot || (so && so.blast)) { this.lastZone = zone; this.react(amount, zone, side, dir, so); } // a frag's blast is 'dot' to the grudge code, not to the body
     if (by === PLY) { if (!dot && src !== 'car' && !this.aware) alertEnemy(this, P.pos, 2.5); if (this.human && !grudge(this, PLY)) squadGrudge(this, PLY, 40); if (this.fac === 'looter') looterScare(this, P.pos); }
     else if (by && by !== this && by.pos && !(by.sq && by.sq === this.sq) && by.fac !== this.fac) { // crossfire from your own side is forgiven
       if (this.human && !grudge(this, by)) squadGrudge(this, by, 30);
@@ -605,10 +627,54 @@ class Enemy {
     }
     if (src && src !== true && (src.w || src.by)) this.supp = Math.min(1, (this.supp || 0) + .35);
     if (this.type === 'vampire' && this.hp < this.maxHp * .35 && !this.usedVanish && !dot) { this.usedVanish = 1; this.vanish = 1; this.R.root.visible = false; burst(FXN, this.pos.clone().setY(1.2), 40, 5, 1, .25, .05, COL.ichor, 0, .3, 1, 1); }
-    if (this.hp <= 0) { this.die(part, dir, src, by); return true; }
+    if (this.hp <= 0) { this.die(part, dir, src, by, amount); return true; }
+    if (!dot && (zone === 'thigh' || zone === 'shin') && this.hp < this.maxHp * .4) this.goDown(by, dir);
     return false;
   }
-  die(part, dir, src, by) {
+  // The hit layer (v24): springs on every hit; a heavy hit's pain clip; a knockdown; a limp; a shaken aim. A shotgun's pellets land
+  // in one frame and count as one blow
+  react(dmg, zone, side, dir, so) {
+    if (this.rT !== G.t) { this.rT = G.t; this.rAcc = 0; } this.rAcc += dmg;
+    this.st.flinch = Math.min(1, this.st.flinch + .5); // the box rig's lean (the scanned bodies use the springs)
+    if (this.R.glb) hitSpring(this.R, Math.min(1, (dmg / this.maxHp * 100 + 50) / 250), zone, side, dir, this.face); // BO1 PlayHitAnimation's weight
+    if (zone === 'thigh' || zone === 'shin') { this.limpT = 3; this.limpSide = side || 1; } // a leg hit: three seconds at three-quarter pace
+    if (zone === 'uarm' || zone === 'larm') this.armT = G.t + .6;                       // an arm hit: the next 0.6 s of fire goes 4 deg wide
+    if (this.hp <= 0 || !this.R.glb || this.down) return;
+    const big = this.rAcc / this.maxHp, blast = !!(so && so.blast), sg = !!(so && so.w && so.w.cls === 'shotgun');
+    // knocked flat by a blast nearly always, by a shotgun blast worth half your health 40 % of the time (kickback's rates); up again after
+    if (this.human && !(this.plates > 0) && G.t > (this.knockT || 0) && ((blast && Math.random() < .95) || (sg && big > .5 && Math.random() < .4)) && xReady(this.R, 'knock')) {
+      this.st.pain = 'knock'; this.st.painNext = xReady(this.R, 'getup') ? 'getup' : null; this.st.painJust = true; this.knockT = G.t + 5; this.painT = G.t + 2.5; this.painEnd = G.t + 3.2; return;
+    }
+    // the big pain (BO1): a blow worth over 40 % of max health, not to a hand or a foot, then IW5's half-second before the next
+    if (big > .4 && zone !== 'larm' && zone !== 'shin' && !(this.plates > 0) && G.t > (this.painT || 0)) { const c = painClip(this.R, zone, side); if (c) { this.st.pain = c; this.st.painNext = null; this.st.painJust = true; this.painT = G.t + .5; this.painEnd = G.t + 1.5; } }
+  }
+  // IW5's long death (pain.gsc): a leg hit that leaves a person under 40 % puts them down to crawl. Never within 4.4 m of you, and
+  // then 7-13 s before anyone else does it. The fall is untouchable for 0.75 s, then one more hit finishes them; left alone they
+  // crawl off for 4-20 s and bleed out. Needs the crawl clips baked
+  goDown(by, dir) {
+    if (this.down || !this.human || !this.R.glb || G.t < DOWNED.next || this.pos.distanceToSquared(P.pos) < 4.4 * 4.4 || !xReady(this.R, 'crawl_in') || !xReady(this.R, 'crawl_fwd')) return;
+    DOWNED.next = G.t + rand(7, 13);
+    this.down = { t: 0, inv: G.t + .75, life: rand(4, 20), by, from: (by && by.pos ? by.pos : P.pos).clone() };
+    this.hp = 1; this.st.pain = null; this.st.limp = null; this.st.crawl = 'crawl_in'; this.st.aimHold = false; this.burst = 0; this.hitPending = null; this.vel.set(0, 0, 0);
+  }
+  // a body on the ground is hit where its bones are (refreshed once a frame): head, chest, hips, thighs, shins
+  downPart(o, d) {
+    if (this.dpT !== G.t) {
+      this.dpT = G.t; this.R.root.updateMatrixWorld(true); const B = ragBones(this.R);
+      if (!this.dp) this.dp = [[5, 'head', .16], [3, 'chest', .2], [0, 'belly', .2], [12, 'thigh', .13], [15, 'thigh', .13], [13, 'shin', .1], [16, 'shin', .1]].filter(x => B[x[0]]).map(([i, z, r]) => ({ b: B[i], z, r, p: new T.Vector3() }));
+      for (const s of this.dp) s.b.getWorldPosition(s.p);
+    }
+    let best = null; for (const s of this.dp) { const t = raySphere(o, d, s.p, s.r); if (t > 0 && (!best || t < best.t)) best = { t, part: s.z === 'head' ? 'head' : s.z === 'chest' || s.z === 'belly' ? 'body' : 'limb', zone: s.z, side: 0 }; }
+    return best;
+  }
+  crawl(dt) {
+    const D = this.down; D.t += dt;
+    if (this.st.crawl === 'crawl_in' && D.t > 2.1) this.st.crawl = 'crawl_fwd';
+    if (this.st.crawl === 'crawl_fwd') { const ax = this.pos.x - D.from.x, az = this.pos.z - D.from.z, L = Math.hypot(ax, az) || 1; this.vel.x = damp(this.vel.x, ax / L * .45, 4, dt); this.vel.z = damp(this.vel.z, az / L * .45, 4, dt); this.turnTo(this.pos.x + ax, this.pos.z + az, dt, 2); }
+    else { this.vel.x = damp(this.vel.x, 0, 8, dt); this.vel.z = damp(this.vel.z, 0, 8, dt); }
+    if (D.t > D.life) { this.hp = 0; this.die('body', null, D.by && D.by !== PLY ? D.by.npcSrc : D.by === PLY ? { w: null, dist: 0 } : null, D.by, 0); }
+  }
+  die(part, dir, src, by, dmg) {
     this.dead = true; this.deadT = 0; this.vel.set(0, 0, 0); this.R.root.visible = true; this.pos.y = 0;
     if (dir) { const fwd = new T.Vector3(-Math.sin(this.face), 0, -Math.cos(this.face)); this.st.fallDir = fwd.dot(dir) > 0 ? -1 : 1; }
     const c = this.pos.clone().setY(1.2), fx = !this.unseen; // a death nobody can see doesn't spend particles
@@ -619,15 +685,34 @@ class Enemy {
     else if (this.type === 'witch') { fx && burst(FXA, c, 60, 7, 1.2, .35, .02, COL.purple, 0, .2, 1, 1); this.R.root.visible = false; this.deadT = 8.4; AU.cackle(sp.pan, vol); }
     else if (this.type === 'reptile') { fx && burst(FXN, c, 26, 4, .9, .12, .05, COL.green, 9); }
     else if (this.type === 'shifter') { fx && burst(FXN, c, 30, 4, .9, .14, .05, COL.ichor, 9); }
-    else if (fx) burst(FXN, c, 22, 3.5, .8, .12, .05, COL.blood, 9);
-    if (this.R.glb) this.st.deathClip = 'fall';
-    if (part === 'head' && (src && src.big)) { if (this.R.glb) this.R.head.scale.setScalar(.001); else this.R.head.visible = false; fx && burst(FXN, this.headPos(), 26, 5, .8, .12, .05, this.type === 'reptile' ? COL.green : COL.blood, 9); }
+    else if (fx) burst(FXN, c, 10, 3, .7, .11, .05, COL.blood, 9);
+    const so = src && typeof src === 'object' ? src : null, zone = this.lastZone || (part === 'head' ? 'head' : 'chest'), side = (so && so.side) || 0;
+    if (this.R.glb) this.st.deathClip = deathClip(this.R);
+    this.st.pain = this.st.painNext = this.st.crawl = this.st.limp = null;
+    goreDeath(this, zone, side, so, dmg || 0); // Gore On: heads and limbs (react.js)
     if (this.possessed) spawnWisp(this.pos.x, this.pos.z, wisp);
-    decal(new T.Vector3(this.pos.x, .02, this.pos.z), new T.Vector3(0, 1, 0), rand(1.4, 2.4), splatTex, this.type === 'reptile' ? 0x1a8a2a : this.type === 'demon' || this.type === 'vampire' || this.type === 'witch' ? 0x1a1a1a : 0x5a0010);
+    // a scanned body pools where it comes to lie, two seconds on (react.js bloodPool); the box rig and the vanishing kinds splat now
+    if (!this.R.glb || !this.R.root.visible) decal(new T.Vector3(this.pos.x, .02, this.pos.z), new T.Vector3(0, 1, 0), rand(1.4, 2.4), splatTex, this.type === 'reptile' ? CS(0x1a6a22) : this.type === 'demon' || this.type === 'vampire' || this.type === 'witch' ? 0x1a1a1a : BLOOD.pool);
+    else { corpseInit(this, dir, zone, side, so, dmg || 0); if (this.down) this.corpse.when = 0; } // a body on the ground goes limp at once
+    this.down = null;
     this.tg = null; this.burst = 0; this.hitPending = null;
     if (by === PLY) { this.killedByP = true; onKill(this, part, src); } else npcKilled(this, by); // only your kills score, pay out and drop ammo
   }
-  remove() { this.gone = true; scene.remove(this.R.root); rigDispose(this.R); const i = ENEMIES.indexOf(this); if (i >= 0) ENEMIES.splice(i, 1); }
+  remove() { this.gone = true; corpseGone(this); scene.remove(this.R.root); rigDispose(this.R); const i = ENEMIES.indexOf(this); if (i >= 0) ENEMIES.splice(i, 1); }
+}
+const DOWNED = { next: 0 }; // the long death's street-wide gate
+// which pain clip: by zone, the mirrored copy for the other side; v23's generic hit clip until they've baked
+function painClip(R, zone, side) {
+  const r = side > 0, c = zone === 'head' || zone === 'neck' ? (r ? 'hit_head_m' : 'hit_head') : zone === 'belly' || zone === 'thigh' ? (r ? 'hit_stom_m' : 'hit_stom') : zone === 'uarm' ? (r ? 'hit_shr' : 'hit_shl') : (r ? 'hit_chest_m' : 'hit_chest');
+  return xReady(R, c) ? c : R.actions.hit ? 'hit' : null;
+}
+// the death clip: the library's fall, or one of the pack's deaths once they're baked (the ragdoll takes over at 35 % either way)
+function deathClip(R) { return xReady(R, 'death1') && Math.random() < .67 ? (Math.random() < .5 ? 'death1' : 'death1_m') : 'fall'; }
+// a plate going: ceramic chips off the chest, a crack you hear up close
+function plateCrack(e, at) {
+  if (e.unseen) return; const p = at ? _pC.copy(at) : _pC.set(e.pos.x, 1.25 * e.scale, e.pos.z);
+  burst(FXN, p, 12, 3.2, .5, .05, .03, C(0xc8d2e0), 9, .4); burst(FXA, p, 5, 2.4, .25, .06, .02, C(0x4aa8ff), 4, .3);
+  const sp = spatial(p); if (sp.vol > .08) { AU.nz(.12, 'highpass', 2600, 1400, .8, .28 * sp.vol, sp.pan); AU.tone('triangle', 640, 220, .1, .1 * sp.vol, sp.pan); }
 }
 /* ---------- wisps: demons between bodies. target 'player': you freed it, and it wants you; 'npc': somebody else did, and it
    rides the nearest purger or thins out where it rose ---------- */
@@ -701,12 +786,12 @@ function updateProj(dt) {
     const wh = rayBoxes(p.pos, dir, L);
     if (p.owner === 'player') {
       let best = null, bt = L;
-      for (const e of ENEMIES) { const h = e.partAt(p.pos, dir); if (h && h.t < bt) { bt = h.t; best = { e, part: h.part }; } }
+      for (const e of ENEMIES) { const h = e.partAt(p.pos, dir); if (h && h.t < bt) { bt = h.t; best = { e, part: h.part, zone: h.zone, side: h.side }; } }
       for (const w of WISPS) { const t = raySphere(p.pos, dir, w.pos, .5); if (t > 0 && t < bt) { bt = t; best = { w }; } }
       if (best && (!wh || bt < wh.t)) {
         const hp = _pHit.copy(p.pos).addScaledVector(dir, bt);
         if (best.w) { best.w.hp -= p.dmg; hitMarker(best.w.hp <= 0); }
-        else { const mult = best.part === 'head' ? p.head : best.part === 'limb' ? .85 : 1; const k = best.e.hurt(p.dmg * mult, best.part, dir, { w: p.w, big: p.type === 'plasma' }); hitMarker(k, best.part === 'head'); burst(FXN, hp, 6, 2, .4, .08, .05, COL.blood, 6); }
+        else { const k = best.e.hurt(p.dmg * zoneMul(p.w, best.zone), best.part, dir, { w: p.w, big: p.type === 'plasma', zone: best.zone, side: best.side, at: hp }); hitFX(k, best.part === 'head', best.e); burst(FXN, hp, 6, 2, .4, .08, .05, COL.blood, 6); }
         if (p.type === 'plasma') splash(hp, p); dead = true;
         if (p.type === 'star') AU.thud();
       } else if (wh) {

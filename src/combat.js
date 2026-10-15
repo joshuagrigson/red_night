@@ -107,6 +107,8 @@ const SURF = {
   metal: { dust: 0x9aa0a8, spark: 1, decal: 'metal', snd: 'imp_metal', col: 0x202024 },
   asphalt: { dust: 0x3a3a40, spark: .4, decal: 'hole', snd: 'imp_concrete', col: 0x1a1a1e },
   flesh: { dust: 0x6a0010, spark: 0, decal: null, snd: null },
+  // what a round carries out of a body onto the wall or the floor behind (fleshHit): red, a reptilian's green, the undead's ichor
+  blood: { decal: 'blood', tint: BLOOD.spray.getHex() }, gblood: { decal: 'blood', tint: CS(0x1f6a22).getHex() }, iblood: { decal: 'blood', tint: CS(0x2a0c22).getHex() },
 };
 const DEC = {};
 function decalTex(kind) {
@@ -126,6 +128,11 @@ function decalTex(kind) {
   } else if (kind === 'splinter') {
     x.fillStyle = 'rgba(12,8,4,.95)'; x.beginPath(); x.arc(32, 32, 5, 0, TAU); x.fill();
     x.strokeStyle = 'rgba(190,150,100,.85)'; x.lineWidth = 2; for (let i = 0; i < 7; i++) { const a = rand(-.5, .5) + (i % 2 ? Math.PI : 0) + Math.PI / 2; x.beginPath(); x.moveTo(32, 32); x.lineTo(32 + Math.cos(a) * rand(8, 18), 32 + Math.sin(a) * rand(8, 18)); x.stroke(); }
+  } else if (kind === 'blood') { // a spray off a round: a dense core, droplets thrown out to one side
+    x.fillStyle = '#fff';
+    for (let i = 0; i < 9; i++) { x.globalAlpha = rand(.55, .95); x.beginPath(); x.arc(32 + rand(-6, 6), 32 + rand(-6, 6), rand(3, 8), 0, TAU); x.fill(); }
+    for (let i = 0; i < 28; i++) { const a = rand(-.8, .8), r = rand(8, 30); x.globalAlpha = rand(.5, 1); x.beginPath(); x.arc(32 + Math.cos(a) * r, 32 + Math.sin(a) * r, Math.max(.6, rand(.8, 2.8) * (1 - r / 40)), 0, TAU); x.fill(); }
+    x.globalAlpha = 1;
   } else { // chipped crater
     for (let i = 0; i < 16; i++) { x.fillStyle = `rgba(255,255,255,${rand(.45, .85)})`; const a = rand(0, TAU), r = rand(5, 13); x.beginPath(); x.arc(32 + Math.cos(a) * r * .6, 32 + Math.sin(a) * r * .6, rand(2, 6), 0, TAU); x.fill(); }
     const g = x.createRadialGradient(32, 32, 0, 32, 32, 9); g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(.6, 'rgba(8,6,6,.9)'); g.addColorStop(1, 'rgba(0,0,0,0)'); x.fillStyle = g; x.beginPath(); x.arc(32, 32, 9, 0, TAU); x.fill();
@@ -147,6 +154,26 @@ function surfDecal(p, n, surf, size) {
   _dq.setFromUnitVectors(_dz, n); _dq.multiply(_dq2.setFromAxisAngle(_dz, Math.random() * TAU));
   _dp.copy(p).addScaledVector(n, .015); _ds.setScalar(size * (S.decal === 'crack' ? 2.4 : 1));
   _dm.compose(_dp, _dq, _ds); D.im.setMatrixAt(D.i, _dm); D.i = (D.i + 1) % D.cap; D.im.count = Math.max(D.im.count, D.i === 0 ? D.cap : D.i); D.im.instanceMatrix.needsUpdate = true;
+}
+// A round into a body (v24): a mist sized to the gun (cal ~ dmg/30: MW19 wanted target effects to read a weapon's power), a puff
+// out of the far side along the round, and, with spray, the blood it carries onto whatever stands within 2.5 m behind (CoD: a
+// headshot's blood lands on the wall behind). This is the blood Gore Off keeps; what Gore On adds is in die()
+const _fhO = new T.Vector3(), _fhP = new T.Vector3(), BLOOD_SURF = new Map();
+function fleshHit(p, d, col, sys, cal, head, spray) {
+  const c = clamp(cal, .5, 2.2), n = Math.round(4 + 4 * c);
+  burst(sys, p, n, 2.2 * Math.sqrt(c), .5, .08 * c, .04, col, 7, .3);                                          // spatter
+  sys.emit(p.x, p.y, p.z, d.x * .4, .25, d.z * .4, .55, .1 * c, .42 * c, col, .5, .4, 2.2);                     // mist
+  for (let k = 0, m = head ? n : n >> 1; k < m; k++) { const v = rand(2.5, 5.5) * c; sys.emit(p.x + d.x * .12, p.y + d.y * .12, p.z + d.z * .12, d.x * v + rand(-.6, .6), d.y * v + rand(-.3, .9), d.z * v + rand(-.6, .6), rand(.25, .45), .06 * c, .02, col, 1, 9, .4); } // out the far side
+  if (!spray) return;
+  if (!BLOOD_SURF.size) { BLOOD_SURF.set(COL.blood, 'blood'); BLOOD_SURF.set(COL.green, 'gblood'); BLOOD_SURF.set(COL.ichor, 'iblood'); }
+  const surf = BLOOD_SURF.get(col); if (!surf) return;
+  _fhO.copy(p).addScaledVector(d, .35); const h = rayW(_fhO, d, 2.5);
+  if (h) surfDecal(_fhP.copy(_fhO).addScaledVector(d, h.t), h.n, surf, rand(.25, .6) * c);
+}
+// the slap of a round going in, from where it landed: once a shot (a shotgun's first pellet speaks for the rest)
+function fleshSnd(p, head, i) {
+  if (i) return; const sp = spatial(p); if (sp.vol < .06) return;
+  AU.play(head ? 'flesh_head_1' : 'flesh_hit_' + (1 + Math.floor(Math.random() * 3)), { vol: .55 * sp.vol, pan: sp.pan, rate: rand(.9, 1.1) }) || AU.nz(.05, 'lowpass', 900, 300, 1, .14 * sp.vol, sp.pan);
 }
 function impact(p, n, surf, opts) {
   const S = SURF[surf] || SURF.concrete; const o = opts || {};
@@ -233,6 +260,7 @@ function carExplode(c) {
   const byP = c.lastHitBy === 'player' || (typeof PLY !== 'undefined' && c.lastHitBy === PLY), src = { big: true, w: null, dist: 0, blast: true, by: byP ? PLY : (c.lastHitBy && c.lastHitBy.pos ? c.lastHitBy : null) };
   for (const e of ENEMIES) { if (e.dead) continue; const d = e.pos.distanceTo(c.pos); if (d < 9) e.hurt(lerp(340, 20, d / 9), 'body', e.pos.clone().sub(c.pos).normalize(), src); if (d < 9) e.vel.add(e.pos.clone().sub(c.pos).setY(0).normalize().multiplyScalar(12 * (1 - d / 9))); }
   for (const cv of CIVS) { if (cv.dead) continue; const d = cv.pos.distanceTo(c.pos); if (d < 8) cv.hurt(400, byP ? null : src.by); }
+  blastCorpses(c.pos, 9, 300);
   const pd = P.pos.distanceTo(c.pos);
   if (P.inCar === c) { exitCar(); damagePlayer(90, c.pos, null); } else if (pd < 9) damagePlayer(lerp(110, 8, pd / 9), c.pos, null);
   for (const o of CARS) if (o !== c && !o.dead && o.pos.distanceTo(c.pos) < 7) { carInit(o); o.dm.hp -= 200 * (1 - o.pos.distanceTo(c.pos) / 7); o.lastHitBy = c.lastHitBy; if (o.dm.hp <= 0) setTimeout(() => carExplode(o), rand(250, 700)); }

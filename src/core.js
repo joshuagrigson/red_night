@@ -324,7 +324,14 @@ const AU = {
   mag(out) { this.nz(0.08, 'bandpass', out ? 1800 : 2600, out ? 900 : 2000, 4, 0.35); this.tone('square', out ? 900 : 1300, 600, 0.04, 0.1); },
   rack() { this.nz(0.12, 'bandpass', 1500, 3000, 3, 0.4); setTimeout(() => this.nz(0.1, 'bandpass', 3200, 1600, 3, 0.4), 120); },
   swish(heavy) { this.nz(heavy ? 0.32 : 0.2, 'bandpass', 400, 2600, 1.4, heavy ? 0.5 : 0.35); },
-  hitmark(kill) { this.tone('sine', kill ? 1400 : 2200, kill ? 900 : 2000, kill ? 0.12 : 0.04, kill ? 0.3 : 0.18); },
+  // kind: hit, head, kill, armor (a round on a plate: a duller tick), break (a plate gives: a crunch). Samples when present
+  hitmark(kind) {
+    if (kind === true) kind = 'kill'; else if (!kind) kind = 'hit';
+    if (kind === 'kill') { if (!this.play('kill_thunk', { vol: .75 })) this.tone('sine', 1400, 900, .12, .3); this.play('hit_tick_1', { vol: .45 }); return; }
+    if (kind === 'armor') { if (!this.play('hit_tick_2', { vol: .5, rate: .72 })) this.tone('square', 900, 700, .03, .08); this.nz(.04, 'bandpass', 1100, 700, 3, .12); return; }
+    if (kind === 'break') { this.nz(.16, 'highpass', 2600, 1200, .8, .32); this.tone('triangle', 520, 180, .14, .16); this.play('hit_tick_2', { vol: .5 }); return; }
+    if (!this.play('hit_tick_1', { vol: .55 })) this.tone('sine', 2200, 2000, .04, .18);
+  },
   thud(pan) { this.nz(0.12, 'lowpass', 900, 200, 1, 0.5, pan); },
   ping(pan) { this.nz(0.06, 'highpass', 4000, 6000, 1, 0.2, pan); },
   hurt() { this.tone('sine', 90, 50, 0.2, 0.5); this.nz(0.15, 'lowpass', 1200, 300, 1, 0.3); },
@@ -453,7 +460,11 @@ function makeParticles(max, additive) {
 const FXA = makeParticles(G.quality === 'high' ? 900 : 420, true);
 const FXN = makeParticles(G.quality === 'high' ? 600 : 300, false);
 const C = (hex) => new T.Color(hex);
-const COL = { spark: C(0xffc070), blood: C(0x6a0010), ichor: C(0x111111), green: C(0x2cff6a), ember: C(0xff5a10), purple: C(0xb04dff), smoke: C(0x2c2a28), ash: C(0x777777), cyan: C(0x05d9e8), mag: C(0xff2a6d), white: C(0xffffff), fire: C(0xff7a1a), plasma: C(0x5dff7a) };
+// sRGB hex for colours that are drawn unlit: the pipeline is linear, so an unconverted dark red came out hot pink
+const CS = hex => new T.Color(hex).convertSRGBToLinear();
+// blood (v24): Call of Duty's dark red, as droplets, as a pool, as a spray on a wall
+const BLOOD = { drop: CS(0x8a0c12), pool: CS(0x4a0608), spray: CS(0x6a0a0e) };
+const COL = { spark: C(0xffc070), blood: BLOOD.drop, ichor: C(0x111111), green: C(0x2cff6a), ember: C(0xff5a10), purple: C(0xb04dff), smoke: C(0x2c2a28), ash: C(0x777777), cyan: C(0x05d9e8), mag: C(0xff2a6d), white: C(0xffffff), fire: C(0xff7a1a), plasma: C(0x5dff7a) };
 function burst(fx, p, n, spd, life, s0, s1, color, g, up, a0, drag) {
   for (let i = 0; i < n; i++) {
     const a = Math.random() * TAU, e = rand(-0.3, 1);
@@ -483,12 +494,13 @@ for (let i = 0; i < 70; i++) {
   const m = new T.Mesh(decalGeo, new T.MeshBasicMaterial({ map: holeTex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -4 }));
   m.visible = false; scene.add(m); decals.push(m);
 }
-let decalI = 0;
+let decalI = 0, decalK = 0;
+// returns the mesh (and stamps it: a pool that grows it can tell when the ring has handed it to someone else)
 function decal(p, n, size, tex, color) {
-  const m = decals[decalI]; decalI = (decalI + 1) % decals.length;
+  const m = decals[decalI]; decalI = (decalI + 1) % decals.length; m.userData.k = ++decalK;
   m.material.map = tex || holeTex; m.material.color.set(color || 0xffffff); m.material.needsUpdate = true;
   m.position.copy(p).addScaledVector(n, 0.02); m.lookAt(p.x + n.x, p.y + n.y, p.z + n.z); m.rotateZ(Math.random() * TAU);
-  m.scale.setScalar(size); m.visible = true;
+  m.scale.setScalar(size); m.visible = true; return m;
 }
 
 /* ---------------- collision world (AABBs on a grid) ---------------- */

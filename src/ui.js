@@ -107,8 +107,9 @@ function syncChips() {
   document.querySelectorAll('[data-bsz]').forEach(b => b.classList.toggle('sel', b.dataset.bsz === G.btnSize));
   document.querySelectorAll('[data-lf]').forEach(b => b.classList.toggle('sel', (b.dataset.lf === '1') === !!G.leftFire));
   document.querySelectorAll('[data-sn]').forEach(b => b.classList.toggle('sel', b.dataset.sn === G.supernatural));
+  document.querySelectorAll('[data-gore]').forEach(b => b.classList.toggle('sel', b.dataset.gore === G.gore));
   { const l = document.getElementById('ledeSn'); if (l) l.hidden = G.supernatural === 'off'; } // the title's monster line goes with them
-  document.querySelectorAll('.chip[data-q],.chip[data-n],.chip[data-s],.chip[data-m],.chip[data-aa],.chip[data-inv],.chip[data-bsz],.chip[data-lf],.chip[data-sn]').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('sel')));
+  document.querySelectorAll('.chip[data-q],.chip[data-n],.chip[data-s],.chip[data-m],.chip[data-aa],.chip[data-inv],.chip[data-bsz],.chip[data-lf],.chip[data-sn],.chip[data-gore]').forEach(b => b.setAttribute('aria-pressed', b.classList.contains('sel')));
 }
 function setupMenus() {
   if (IS_TOUCH) $('keysHelp').textContent = 'Left thumb: move (push to the edge to sprint) · Right thumb: look anywhere on the right, and every button there steers once you slide · AIM toggles sights · tap your weapon (top right) to swap, hold it for the blade · camera and shoulder are in Pause · tap a gun on the wall to open its class.';
@@ -123,6 +124,7 @@ function setupMenus() {
   // monsters: actors.js owns the dial (it also reweights the spawns at once); the row only shows once it exists
   if (typeof setSupernatural === 'function') document.querySelectorAll('[data-sn]').forEach(b => b.onclick = () => { setSupernatural(b.dataset.sn); syncChips(); });
   else $('rowSn').hidden = true;
+  document.querySelectorAll('[data-gore]').forEach(b => b.onclick = () => { G.gore = b.dataset.gore === 'on' ? 'on' : 'off'; store('gore', G.gore); syncChips(); });
   syncChips();
   $('goChar').onclick = () => { AU.init(); openChar(); };
   $('goSet').onclick = () => { AU.init(); openSettings('title'); };
@@ -354,7 +356,9 @@ function hudUpdate(dt) {
   if (HUD.last.hp !== hpr) { if (city && HUD.last.hp !== undefined && hpr - HUD.last.hp >= 8) pulse('hpWrap', 'up'); HUD.last.hp = hpr; $('hpFill').style.width = pct + '%'; $('hpWrap').classList.toggle('low', pct < 30 && hp > 0); }
   setTxt('hpTxt', Math.ceil(hp) + ' / ' + P.maxHp);
   setTxt('status', P.possT > 0 ? 'POSSESSED · MASH MELEE' : P.hexT > 0 ? 'HEXED · SLOWED' : P.inCar ? 'DRIVING · ' + Math.round(Math.abs(P.inCar.speed) * 3.6) + ' KM/H' : '');
-  setOp('dmg', Math.round(clamp((1 - hp / P.maxHp) * 1.2 + (G.dmgFlash || 0), 0, 1) * 50) / 50);
+  // the blood at the edges (IW5's splatter overlay): alpha 1.2(1 - health)^2, up at once on a hit, down at 0.3 a second as you heal
+  const spl = clamp(1.2 * Math.pow(1 - hp / P.maxHp, 2), 0, 1); HUD.splat = Math.max(spl, (HUD.splat || 0) - dt * .3);
+  setOp('dmg', Math.round(clamp(HUD.splat + (G.dmgFlash || 0) * .6, 0, 1) * 50) / 50);
   G.dmgFlash = Math.max(0, (G.dmgFlash || 0) - dt * 2);
   setOp('poss', P.possT > 0 ? Math.round((.55 + Math.sin(G.t * 9) * .2) * 50) / 50 : 0);
   setOp('hex', P.hexT > 0 ? .6 : 0);
@@ -389,7 +393,8 @@ function hudUpdate(dt) {
   if (scoped && HUD.scopeKey !== s.id + s.cfg.retCol + s.cfg.retShape + window.innerWidth) drawScope(s);
   if (scoped) { const sw = Math.min(2, (P.steadyK || 1) * 2); /* the aim itself sways now; the ring only breathes a little */ $('scope').style.transform = `translate(${Math.sin(G.t * .9) * sw}px,${Math.sin(G.t * 1.7) * sw * .8}px)`; }
   // hit marker
-  if (HUD.hitT > 0) { HUD.hitT -= dt; $('hit').style.opacity = clamp(HUD.hitT / .15, 0, 1); }
+  if (HUD.hitT > 0) { HUD.hitT -= dt; const k = clamp(HUD.hitT / HUD.hitD, 0, 1); $('hit').style.opacity = Math.round(k * k * 50) / 50; }
+  if (HUD.brkT > 0) { HUD.brkT -= dt; const b = $('hitBrk'); if (b) b.style.opacity = clamp(HUD.brkT / .5, 0, 1); }
   // damage directions
   HUD.dirs.forEach((d, i) => { const el = $('dirs').children[i]; if (d.t > 0) { d.t -= dt; const ang = Math.atan2(d.x - P.pos.x, -(d.z - P.pos.z)) + P.yaw; el.style.transform = `rotate(${ang}rad)`; el.style.opacity = clamp(d.t, 0, 1); } else if (d.t > -1) { d.t = -1; el.style.opacity = 0; } });
   // banner
@@ -482,8 +487,16 @@ function drawMini() {
   x.strokeStyle = '#f1efe9'; x.lineWidth = 2 * d; x.beginPath(); x.moveTo(H + nx * (H - d), H + ny * (H - d)); x.lineTo(H + nx * (H - 6 * d), H + ny * (H - 6 * d)); x.stroke();
   x.fillStyle = 'rgba(241,239,233,.9)'; x.font = `700 ${Math.round(9 * d)}px 'Chakra Petch', sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('N', H + nx * (H - 13 * d), H + ny * (H - 13 * d));
 }
-function hitMarker(kill, head) {
-  HUD.hitT = kill ? .32 : .15; const el = $('hit'); el.classList.toggle('kill', !!kill); el.classList.toggle('head', !!head); el.style.opacity = 1; AU.hitmark(kill);
+// v24 hitmarkers in tiers, as Call of Duty reads them: white on a hit, bigger and yellow with a ping on the head, red on a kill,
+// blue while a round is stopped by armor, and a cracked-plate mark with its own sound when a plate breaks (Warzone). Full alpha at
+// once, then a fade (CoD4's damage_feedback fades over 1 s; ours eases out, so it reads at a burst's pace). armor: 1 hit a plate,
+// 2 broke one. dmg (optional) grows the marker a little
+function hitMarker(kill, head, armor, dmg) {
+  HUD.hitD = HUD.hitT = kill ? .75 : armor ? .55 : .45; const el = $('hit');
+  el.classList.toggle('kill', !!kill); el.classList.toggle('head', !!head); el.classList.toggle('armor', !kill && !!armor); el.style.opacity = 1;
+  el.style.transform = `scale(${((head ? 1.25 : 1) * (1 + Math.min(.25, (dmg || 0) / 240))).toFixed(3)})`;
+  if (armor === 2) { HUD.brkT = .9; const b = $('hitBrk'); if (b) { b.style.opacity = 1; pulse(b, 'go'); } }
+  AU.hitmark(kill ? 'kill' : armor === 2 ? 'break' : armor ? 'armor' : head ? 'head' : 'hit');
 }
 function flashBanner(h, p, dur) { $('bannerH').textContent = h; $('bannerP').textContent = p || ''; const b = $('banner'); b.style.opacity = 1; pulse(b, 'go'); HUD.bannerT = dur || 2; }
 function feed(html) {
