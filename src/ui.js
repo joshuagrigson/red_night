@@ -85,6 +85,7 @@ function openChar() {
 }
 function charChanged() {
   store('char', G.char);
+  { const want = (PLAYER_MODELS[G.char.gender] || PLAYER_MODELS.m)[G.char.outfit]; if (CHARS_READY && CHARS[want] && !CHARS[want].scene) ensureChar(want).then(() => { if (CHARS[want].scene) charChanged(); }); }
   document.querySelectorAll('[data-g]').forEach(b => b.classList.toggle('sel', b.dataset.g === G.char.gender));
   [...$('skinSw').children].forEach((b, i) => b.classList.toggle('sel', i === G.char.skin));
   { const mm = maskMode(), nm = neonMode(); const lab = $('hairSw').previousElementSibling; if (lab) lab.textContent = nm ? 'Hair & neon' : mm ? 'Mask color' : CHARS_READY && playerGLBId() === 'witch' ? 'Hair & eyes' : 'Hair color';

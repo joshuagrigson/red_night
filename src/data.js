@@ -574,7 +574,7 @@ function loadModel(id) {
     // GLBs ship as base64 text: the artifact host serves .txt but not .glb
     fetch(def.url + '.txt').then(r => { if (!r.ok) throw 0; return r.text(); }).then(b64 => {
       const bin = atob(b64.trim()); const buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-      _mLoader.parse(buf.buffer, '', gl => { def.scene = gl.scene; res(); modelArrived(id); }, () => res());
+      _mLoader.parse(buf.buffer, '', gl => { if (LOWMEM) shrinkTextures(gl.scene, TEXCAP); def.scene = gl.scene; res(); modelArrived(id); }, () => res());
     }).catch(() => res());
   });
   return def.p;
@@ -595,7 +595,7 @@ function loadModels() {
   const rest = Object.keys(MODELS).filter(id => !want.includes(id));
   const first = Promise.all(want.map(loadModel));
   // background: two at a time once the core set is in
-  first.then(() => { let k = 0; const next = () => { if (k >= rest.length) return; const id = rest[k++]; loadModel(id).then(() => setTimeout(next, 60)); }; setTimeout(() => { next(); next(); }, 1500); });
+  if (!LOWMEM) first.then(() => { let k = 0; const next = () => { if (k >= rest.length) return; const id = rest[k++]; loadModel(id).then(() => setTimeout(next, 60)); }; setTimeout(() => { next(); next(); }, 1500); });
   return Promise.race([first, new Promise(r => setTimeout(r, 15000))]);
 }
 function lcMag() { return new T.MeshStandardMaterial({ color: lc(0x6a2a10), metalness: .2, roughness: .5 }); }

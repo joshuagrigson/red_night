@@ -31,22 +31,46 @@ const RAWB = { corpom: { minY: 0, h: .9786 }, hackm: { minY: 0, h: .9806 }, hack
 function parseGLBText(loader, url) {
   return fetch(url + '.txt').then(r => { if (!r.ok) throw 0; return r.text(); }).then(b64 => new Promise((res, rej) => {
     const bin = atob(b64.trim()); const buf = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-    loader.parse(buf.buffer, '', res, rej);
+    loader.parse(buf.buffer, '', gl => { if (LOWMEM) shrinkTextures(gl.scene, TEXCAP); res(gl); }, rej);
   }));
+}// Phones (iOS Safari kills the tab around 1-1.5 GB): cap every GLB texture and keep only what the night needs in memory
+const LOWMEM = IS_TOUCH || (navigator.deviceMemory && navigator.deviceMemory <= 4);
+const TEXCAP = 512;
+function shrinkTextures(root, max) {
+  const seen = new Set();
+  root.traverse(o => {
+    if (!o.isMesh || !o.material) return;
+    for (const m of (Array.isArray(o.material) ? o.material : [o.material])) for (const k of ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap']) {
+      const t = m[k]; if (!t || seen.has(t) || !t.image) continue; seen.add(t);
+      const im = t.image, w = im.width, h = im.height; if (!w || Math.max(w, h) <= max) continue;
+      const s = max / Math.max(w, h), cv = document.createElement('canvas'); cv.width = Math.round(w * s); cv.height = Math.round(h * s);
+      cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); if (im.close) im.close(); t.image = cv; t.needsUpdate = true;
+    }
+  });
 }
+
 const boneKey = n => n.replace(/^mixamorig[:_]?/i, '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 function findBone(root, key) { let b = null; root.traverse(o => { if (!b && o.isBone && boneKey(o.name) === key) b = o; }); return b; }
 function loadChars() {
   if (!T.GLTFLoader || !T.SkeletonUtils) return Promise.resolve();
   const loader = new T.GLTFLoader(); if (window.MeshoptDecoder) loader.setMeshoptDecoder(window.MeshoptDecoder);
-  const jobs = Object.keys(CHARS).map(id => parseGLBText(loader, CHARS[id].url).then(gl => prepChar(id, gl)).catch(() => { }));
+  _cLoader = loader;
+  const mine = (PLAYER_MODELS[G.char.gender] || PLAYER_MODELS.m)[G.char.outfit];
+  const boot = Object.keys(CHARS).filter(id => !(LOWMEM && DESIGNED.includes(id) && id !== mine)); // other outfits load when picked
+  const jobs = boot.map(id => ensureChar(id));
   jobs.push(parseGLBText(loader, ANIMLIB.url).then(gl => {
     const map = {}; for (const c of gl.animations) map[c.name.toLowerCase().replace(/^.*\|/, '')] = c;
     ANIMLIB.raw = map; const hips = findBone(gl.scene, 'hips'); ANIMLIB.hipsRest = hips ? hips.position.length() : 1;
     ANIMLIB.hipsName = hips ? hips.name : 'mixamorigHips';
   }).catch(() => { }));
   return Promise.race([Promise.all(jobs), new Promise(r => setTimeout(r, 25000))]).then(() => { CHARS_READY = !!ANIMLIB.raw; });
+}let _cLoader = null;
+function ensureChar(id) {
+  const def = CHARS[id]; if (!def || !_cLoader) return Promise.resolve();
+  if (!def.p) def.p = parseGLBText(_cLoader, def.url).then(gl => { prepChar(id, gl); if (CHARS_READY && typeof clipsFor === 'function') clipsFor(id); }).catch(() => { });
+  return def.p;
 }
+
 function prepChar(id, gl) {
   const def = CHARS[id]; const sc = gl.scene;
   sc.traverse(o => {
