@@ -128,11 +128,11 @@ function setupMenus() {
   $('pCam').onclick = () => toggleCam(); $('pLoad').onclick = openLoadGrid;
   $('loadBack').onclick = () => { show('mLoad', false); show('mPause', true); G.state = 'paused'; }; // was left in 'pauseload', so Esc and photo mode stopped working
   $('pSet').onclick = () => openSettings('pause'); $('pPhoto').onclick = enterPhoto;
-  $('endAgain').onclick = () => { show('mEnd', false); startNight(); }; $('endTitleBtn').onclick = () => { show('mEnd', false); quitToTitle(); };
+  $('endAgain').onclick = () => { show('mEnd', false); document.body.classList.remove('inMenu'); startNight(); }; $('endTitleBtn').onclick = () => { show('mEnd', false); quitToTitle(); };
   $('rotate').onclick = () => show('rotate', false);
   setupSettings(); setupPhoto();
   // end screen: personal best, districts and peak heat under the night's stats
-  if (typeof endScreen === 'function' && !endScreen.ui) { const f0 = endScreen; endScreen = function (won) { const best = +store('best') || 0; f0(won); try { endExtras(best); } catch (e) { } }; endScreen.ui = 1; }
+  if (typeof endScreen === 'function' && !endScreen.ui) { const f0 = endScreen; endScreen = function (won) { const best = +store('best') || 0; f0(won); document.body.classList.add('inMenu'); try { endExtras(best); } catch (e) { } }; endScreen.ui = 1; }
   window.addEventListener('resize', () => { HUD.miniD = 0; });
   // Esc for the menus the main loop does not handle (settings, loadout grid, photo preview); runs after player.js queued 'pause'
   window.addEventListener('keydown', e => {
@@ -504,6 +504,7 @@ function setupPhoto() {
     PH.tap = null; phGesture(true);
   };
   pad.addEventListener('pointerup', up); pad.addEventListener('pointercancel', up);
+  pad.addEventListener('gesturestart', e => e.preventDefault()); // iOS: our pinch is FOV, not page zoom
   pad.addEventListener('wheel', e => { PH.fov = clamp(PH.fov * (e.deltaY > 0 ? 1.06 : 1 / 1.06), 20, 100); $('phFov')._draw(); e.preventDefault(); }, { passive: false });
 }
 // two fingers: drag moves the camera (up = forward, sideways = strafe), pinch zooms

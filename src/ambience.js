@@ -81,7 +81,7 @@ function rainBuf(c, kind) {
 
 /* ---------- voices: sources → env → distance gain → air lowpass → pan → bus (+ reverb send) ---------- */
 function ambVoice(x, z, loud, send, prio, y, near) {
-  const A = AMB; if (!A.ok || (A.nv >= A.cap && !prio)) return null;
+  const A = AMB; if (!A.ok || (A.nv >= A.cap + (near ? 4 : 0) && !prio)) return null; // close cues (barks) outrank distant ones
   const c = A.c, v = { x, z, y, loud, send: near ? 0 : send || 0, near, src: [], nodes: [], left: 0, dead: 0, vx: 0, vz: 0, dop: null, track: 0 };
   v.env = c.createGain(); v.env.gain.value = 0; v.sp = c.createGain(); v.lp = c.createBiquadFilter(); v.lp.type = 'lowpass'; v.lp.Q.value = .5; v.pn = A.pan();
   v.env.connect(v.sp); v.sp.connect(v.lp); v.lp.connect(v.pn); v.pn.connect(near ? AU.sfx : A.bus);
@@ -708,10 +708,10 @@ AMB.skyBoom = function (x, z, big) {
   if (big === undefined) big = Math.random() < .35;
   const y = roofAt(x, z) * .4 + rand(3, 9), pa = this.pa, d = Math.hypot(x - cp.x, z - cp.z);
   skyAdd(pa, x, y + 4, z, 0, 2, 0, .9, big ? 55 : 38, big ? 90 : 60, 1, .7, .4, 1, 1);                        // the flash
-  skyAdd(pa, x, y + 30, z, 0, 0, 0, 1.6, 150, 190, .7, .28, .12, .3, 1);                                      // the low cloud lights up
-  skyAdd(pa, x, y + 6, z, 0, 3, 0, 3.4, 18, big ? 40 : 30, 1, .38, .12, .85, 2, 2.5, .3, 1);                 // fireball rising
+  skyAdd(pa, x, y + 70, z, 0, 0, 0, 1.6, 170, 220, .7, .28, .12, .26, 1);                                     // the low cloud lights up over the rooftops
+  skyAdd(pa, x, y + 6, z, 0, 8, 0, 3.4, 18, big ? 44 : 32, 1, .38, .12, .85, 2, 6, .3, 1);                   // fireball climbing over the roofs
   for (let k = 0; k < (big ? 10 : 6); k++) skyAdd(pa, x, y + 4, z, rand(-14, 14), rand(14, 30), rand(-14, 14), rand(1.6, 3), 1.6, .6, 1, .6, .25, 1, 0, -9.8, .2, 1);   // burning debris
-  for (const e of this.SE) if (!e.on) { e.on = 1; e.x = x; e.y = y; e.z = z; e.t = 0; e.acc = 0; e.big = big; e.life = rand(16, 26) * (big ? 1.3 : 1); break; }
+  for (const e of this.SE) if (!e.on) { e.on = 1; e.x = x; e.y = y; e.z = z; e.t = 0; e.acc = 0; e.big = big; e.life = rand(20, 30) * (big ? 1.3 : 1); break; }
   ambBoom(x, z, big, d / 343, y);
 };
 AMB.skyTracers = function () {
@@ -727,7 +727,7 @@ AMB.skyFlare = function () {
   if (!this.gfx) return; let f = null; for (const q of this.FL) if (!q.on) { f = q; break; } if (!f) return;
   const cp = camera.position, p = farPt(150, 330, true, cp); f.core = skyMan(this.pa); f.halo = skyMan(this.pa); f.glow = skyMan(this.pa);
   if (!f.core || !f.halo || !f.glow) { for (const q of [f.core, f.halo, f.glow]) if (q) q.on = 0; return; }
-  f.x = p.x; f.z = p.z; f.y = roofAt(p.x, p.z) + 2; f.vy = rand(38, 48); f.t = 0; f.sm = 0; f.on = 1;
+  f.x = p.x; f.z = p.z; f.y = roofAt(p.x, p.z) + 2; f.vy = rand(54, 66); f.t = 0; f.sm = 0; f.on = 1;
   ambGun(p.x, p.z, 1, .5, false, p.d / 343);                                                                  // the launcher's pop
 };
 function skyFx(dt) {
@@ -736,17 +736,17 @@ function skyFx(dt) {
     if (!e.on) continue; e.t += dt; if (e.t > e.life) { e.on = 0; continue; } e.acc += dt; const rate = e.t < 3 ? .25 : .55, young = e.t < 5, sc = e.big ? 1.3 : 1;
     while (e.acc > rate) {
       e.acc -= rate;
-      skyAdd(A.pn, e.x + rand(-3, 3), e.y + rand(0, 5), e.z + rand(-3, 3), w.x * rand(.4, 1) + rand(-.6, .6), rand(3.5, 6.5), w.z * rand(.4, 1) + rand(-.6, .6), rand(13, 19), rand(8, 13) * sc, rand(30, 48) * sc, young ? .32 : .15, young ? .17 : .12, young ? .13 : .13, .55, 2, -.05, .03);
+      skyAdd(A.pn, e.x + rand(-3, 3), e.y + rand(0, 5), e.z + rand(-3, 3), w.x * rand(.4, 1) + rand(-.6, .6), rand(6, 9), w.z * rand(.4, 1) + rand(-.6, .6), rand(15, 21), rand(6, 10) * sc, rand(34, 52) * sc, young ? .3 : .24, young ? .19 : .19, young ? .15 : .2, .5, 2, -.08, .03);   // lit warm from the fire below, grey higher up
       if (e.t < 8 && Math.random() < .6) skyAdd(A.pa, e.x + rand(-2, 2), e.y + rand(0, 3), e.z + rand(-2, 2), 0, 1.5, 0, rand(.6, 1.1), rand(8, 14), rand(4, 8), 1, .42, .14, .5 * (1 - e.t / 8), 1, 0, 0, 1);  // fire still burning at the base
     }
   }
   for (const f of A.FL) {
     if (!f.on) continue; f.t += dt;
     if (f.vy > 0) { f.vy -= 15 * dt; f.y += f.vy * dt; } else { f.y -= 2.3 * dt; f.x += (w.x * 1.3 + Math.sin(f.t * 1.1) * .5) * dt; f.z += w.z * 1.3 * dt; }   // under its parachute
-    const fl = .8 + Math.random() * .2, fade = clamp((28 - f.t) / 3, 0, 1);
+    const fl = .8 + Math.random() * .2, fade = clamp((40 - f.t) / 3, 0, 1);
     manSet(f.core, f.x, f.y, f.z, 3, fl * fade, 1, .25, .16); manSet(f.halo, f.x, f.y, f.z, 16, .45 * fl * fade, 1, .12, .08); manSet(f.glow, f.x, f.y, f.z, 70, .12 * fade, .9, .1, .06);
     if ((f.sm -= dt) <= 0) { f.sm = .28; skyAdd(A.pn, f.x, f.y, f.z, rand(-.2, .2), .2, rand(-.2, .2), 7, 1.2, 6, .36, .1, .11, .4, 2, 0, .2); }
-    if (f.t > 28 || (f.vy <= 0 && f.y < 8)) { f.on = 0; f.core.on = f.halo.on = f.glow.on = 0; }
+    if (f.t > 40 || (f.vy <= 0 && f.y < 8)) { f.on = 0; f.core.on = f.halo.on = f.glow.on = 0; }
   }
 }
 
@@ -836,14 +836,14 @@ function heliUpdate(dt, st) {
   const heat = typeof HEAT !== 'undefined' ? HEAT.level || 0 : 0;
   if (!title && HELI.st === 'orbit' && HELI.lock <= 0 && Math.random() < dt * (.02 + heat * .02 + (G.hour || 0) * .003)) HELI.lock = rand(5, 9);
   let sx, sz;
-  if (HELI.lock > 0 && !title) { HELI.lock -= dt; sx = P.pos.x + P.vel.x * .3; sz = P.pos.z + P.vel.z * .3; }
+  if (HELI.lock > 0 && !title) { HELI.lock -= dt; sx = P.pos.x; sz = P.pos.z; }
   else if (HELI.st === 'in' && Math.hypot(HELI.pos.x - HELI.c.x, HELI.pos.z - HELI.c.z) > 140) { sx = HELI.pos.x + HELI.vel.x * 1.5; sz = HELI.pos.z + HELI.vel.z * 1.5 + 10; }
   else { HELI.sw += dt; const r = 6 + 10 * (.5 + .5 * Math.sin(HELI.sw * .23)); sx = HELI.c.x + Math.sin(HELI.sw * .41) * r; sz = HELI.c.z + Math.cos(HELI.sw * .29) * r; }
-  const sk = HELI.lock > 0 ? 2.5 : .8; HELI.spot.x = damp(HELI.spot.x, sx, sk, dt); HELI.spot.z = damp(HELI.spot.z, sz, sk, dt); HELI.spot.y = damp(HELI.spot.y, roofAt(HELI.spot.x, HELI.spot.z), 8, dt);
+  const sk = HELI.lock > 0 ? 1.6 : .8; HELI.spot.x = damp(HELI.spot.x, sx, sk, dt); HELI.spot.z = damp(HELI.spot.z, sz, sk, dt); HELI.spot.y = damp(HELI.spot.y, roofAt(HELI.spot.x, HELI.spot.z), 8, dt); // a sprint (7.6 m/s) outruns the chase, a walk doesn't
   _ac.set(HELI_NAV[4][0], HELI_NAV[4][1], HELI_NAV[4][2]).applyMatrix4(HELI.g.matrixWorld); _ad.subVectors(HELI.spot, _ac); const len = _ad.length() || 1; _ad.divideScalar(len);
   const r = 2.6 + len * .028, B = AMB.beam, S = AMB.spotM, on = 1 - (G.dawn || 0);
   B.position.copy(_ac); B.quaternion.setFromUnitVectors(_aDown, _ad); B.scale.set(r, len, r); B.material.uniforms.op.value = (.14 + .2 * G.rainK) * on;
-  S.position.set(HELI.spot.x, HELI.spot.y + .07, HELI.spot.z); S.rotation.y = Math.atan2(_ad.x, _ad.z); S.scale.set(r * 2, 1, r * 2 * Math.min(2.5, 1 / Math.max(.4, -_ad.y))); S.material.opacity = .5 * on;
+  S.position.set(HELI.spot.x, HELI.spot.y + .07, HELI.spot.z); S.rotation.y = Math.atan2(_ad.x, _ad.z); S.scale.set(r * 2, 1, r * 2 * Math.min(2.5, 1 / Math.max(.4, -_ad.y))); S.material.opacity = .42 * on;
   AMB.sLS.p.set(HELI.spot.x, HELI.spot.y + 4, HELI.spot.z); AMB.sLS.i = 3.4 * on; for (const L of lightPool) if (L.userData.ls === AMB.sLS) L.position.copy(AMB.sLS.p);
   if (!title) {
     const dx = HELI.spot.x - P.pos.x, dz = HELI.spot.z - P.pos.z;

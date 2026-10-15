@@ -22,6 +22,7 @@ body{--aug:.35;--line:rgba(5,217,232,calc(.06 + .34*var(--aug)));background:var(
 button{font-family:var(--f-ui);cursor:pointer;color:var(--ink)}
 button:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
 .hide{display:none!important}
+[hidden]{display:none!important}  /* .opt{display:flex} was beating the hidden attribute (hair-style row showed for scanned models) */
 
 /* ---------- FX layers ---------- */
 #fx{position:fixed;inset:0;pointer-events:none;z-index:5}
@@ -139,10 +140,12 @@ body.touch #wName{font-size:10px}
 body.touch #mini{width:84px;height:84px}
 body.touch #slots{display:none}
 body.touch #prompt{display:none}  /* the ACT button carries the label on touch */
+body.touch #banner{top:46%;left:50%;right:auto;width:40vw;padding:0;transform:translateX(-50%)}  /* below the broadcast, between the thumb clusters */
+body.touch #banner h2{font-size:clamp(20px,4vw,30px)}
 body:not(.touch) #touch{display:none}
 /* story.js broadcast: below the menus, out of the way of the HUD corners, hidden in menus and photo mode */
 #bcast{z-index:8!important;top:calc(var(--st) + 92px)!important}
-body.touch #bcast{top:calc(var(--st) + 100px)!important;max-width:min(400px,46vw)!important;font-size:12px!important;padding:6px 11px 7px!important}
+body.touch #bcast{top:calc(var(--st) + 108px)!important;box-sizing:border-box;max-width:min(380px,38vw)!important;font-size:12px!important;padding:6px 11px 7px!important}
 body.inMenu #bcast,body.photo #bcast{visibility:hidden}
 body.photo #hud,body.photo #touch,body.photo #scope,body.photo #rotate{display:none!important}
 
@@ -169,13 +172,14 @@ h1.title span{color:var(--blood)}
 .keys{font-size:12px;color:var(--dim);line-height:1.7;letter-spacing:.04em;text-shadow:0 1px 2px rgba(0,0,0,.7)}
 .keys kbd{font-family:var(--f-mono);color:var(--ink);border:1px solid var(--edge2);padding:0 4px}
 body.touch .chip{min-height:44px;min-width:44px}
-body.touch .swatch{width:40px;height:40px}
+body.touch .swatch{width:44px;height:44px}
 
 #mChar{align-items:stretch;gap:14px;flex-wrap:wrap;background:rgba(8,8,11,.55)}
 #mChar .stage{flex:1 1 320px;min-height:280px;position:relative}
 #mChar .stage .holder,.pvHolder{position:absolute;inset:0}
 #pv{width:100%;height:100%;display:block}
 #mChar .side{flex:1 1 340px;max-width:520px;padding:20px;display:flex;flex-direction:column;gap:14px}
+#mChar .side>.row:last-child{position:sticky;bottom:0;margin:0 -20px -20px;padding:12px 20px 20px;background:#0f0e12;border-top:1px solid var(--edge)}
 .swatch{width:30px;height:30px;border-radius:50%;border:2px solid transparent;padding:0;box-shadow:0 0 0 1px rgba(0,0,0,.5)}
 .swatch.sel{border-color:var(--volt);box-shadow:0 0 0 2px #0e0d12,0 0 0 4px var(--volt)}
 
@@ -207,7 +211,7 @@ body.touch .swatch{width:40px;height:40px}
 .att button span{font-size:10px;color:var(--dim);letter-spacing:.04em}
 .att button.sel{border-color:var(--ink);background:rgba(255,255,255,.1)}
 .pro{color:var(--good)}.con{color:var(--bad)}
-#smFoot{display:flex;gap:8px;flex-wrap:wrap}
+#smFoot{display:flex;gap:8px;flex-wrap:wrap;position:sticky;bottom:-12px;margin:0 -12px -12px;padding:10px 12px 12px;background:#0f0e12;border-top:1px solid var(--edge)}  /* equip stays reachable on short screens */
 #smFoot.ok .btn{animation:okFlash .9s ease-out}
 @keyframes okFlash{0%,25%{border-color:var(--good);box-shadow:0 0 0 1px var(--good)}}
 .specs{font-family:var(--f-mono);font-size:12px;color:var(--dim);display:grid;grid-template-columns:1fr 1fr;gap:2px 10px}
@@ -273,7 +277,7 @@ body.phHidden #photoBar{opacity:0;pointer-events:none}
 @keyframes shutter{0%{opacity:.75}100%{opacity:0}}
 #phOut{position:fixed;inset:0;z-index:12;display:flex;align-items:center;justify-content:center;padding:calc(12px + var(--st)) max(12px,var(--sr)) calc(12px + var(--sb)) max(12px,var(--sl));background:rgba(6,6,8,.7)}
 #phOut .glass{padding:14px;display:flex;flex-direction:column;gap:10px;max-width:min(760px,100%);max-height:100%}
-#phImg{display:block;max-width:100%;max-height:calc(100vh - 150px);min-height:0;object-fit:contain;-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto}
+#phImg{display:block;max-width:100%;max-height:calc(100vh - 180px);min-height:0;object-fit:contain;-webkit-touch-callout:default;-webkit-user-select:auto;user-select:auto}
 #phNote{margin:0;font-size:12px;color:var(--dim)}
 .phRow{display:flex;gap:8px;flex-wrap:wrap}
 
@@ -291,12 +295,12 @@ body.phHidden #photoBar{opacity:0;pointer-events:none}
 #ldPct{color:var(--ink)}
 #ldLine{min-height:2.9em;margin:8px 0 0;font-size:14px;line-height:1.45;color:var(--dim);transition:opacity .5s}
 
-#rotate{position:fixed;left:50%;top:calc(12px + var(--st));transform:translateX(-50%);z-index:20;min-height:44px;display:flex;align-items:center;gap:10px;padding:0 16px;font-size:13px;font-weight:600;letter-spacing:.08em;background:var(--panel2);border:1px solid var(--volt);color:var(--volt);pointer-events:auto;white-space:nowrap}
+#rotate{position:fixed;left:50%;top:calc(12px + var(--st));transform:translateX(-50%);z-index:20;min-height:44px;display:flex;align-items:center;gap:10px;padding:0 16px;font-size:13px;font-weight:600;letter-spacing:.08em;background:var(--panel2);border:1px solid var(--volt);color:var(--volt);pointer-events:auto;max-width:calc(100vw - 32px);width:max-content}
 #rotate:after{content:"✕";font-size:12px;color:var(--dim)}
 
 @media (max-width:900px),(max-height:500px){
   #clock{font-size:20px}#clockSub{font-size:9px;letter-spacing:.16em}#nightBar{width:120px;margin-top:4px}#heat{margin-top:5px}#heat i{width:11px;height:5px}#heat em{font-size:8px}
-  #distName{font-size:15px}#objective{font-size:10.5px}#dist{max-width:clamp(118px,calc(50vw - 236px - var(--sl)),300px);gap:3px}#hpWrap{width:120px;margin-top:6px}#hpTxt{font-size:11px}#status{font-size:10px}#mini{width:84px;height:84px}
+  #distName{font-size:15px}#objective{font-size:10.5px}#dist{max-width:clamp(118px,calc(50vw - 184px - var(--sl)),300px);gap:3px}#hpWrap{width:120px;margin-top:6px}#hpTxt{font-size:11px}#status{font-size:10px}#mini{width:84px;height:84px}
   #score{font-size:16px}#kills{font-size:10px}#feed div{font-size:10px}#ammo{font-size:30px}#wName{font-size:11px}
   #banner{top:22%}#banner h2{font-size:clamp(22px,min(5.4vw,9vh),48px)}#banner h2:after{margin-top:8px;width:44px}#banner p{font-size:10px;letter-spacing:.22em;margin-top:7px}
   #prompt{font-size:12px}
