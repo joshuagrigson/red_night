@@ -235,8 +235,8 @@ class Enemy {
     if ((this.voiceT -= dt) > 0) return; this.voiceT = rand(10, 20);
     if (d2 < 16 * 16 || d2 > 72 * 72 || G.t - _idleBarkT < 2 || this.mode === 'morph' || typeof AMB === 'undefined' || !AMB.bark) return;
     if (this.mode === 'disguise' && (this.type !== 'shifter' || Math.random() > .3)) return; // a shifter in the crowd sometimes growls when nobody's close
-    const A = AMB, pi = A._int; _idleBarkT = G.t; A._int = 1;
-    try { A.bark(this.pos, this.type === 'purger' && this.aware ? 'shout' : IDLE_BARK[this.type]); } catch (e) { } A._int = pi;
+    _idleBarkT = G.t;
+    try { AMB.bark(this.pos, this.type === 'purger' && this.aware ? 'shout' : IDLE_BARK[this.type], { ambient: 1 }); } catch (e) { }
   }
   attachWeapon(k) {
     const hand = this.R.rArm.hand; const g = new T.Group();

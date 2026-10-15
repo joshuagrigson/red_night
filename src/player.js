@@ -203,7 +203,7 @@ function buildVM() {
   if (VM.gun) VM.holder.remove(VM.gun.g); if (VM.gun2) VM.holder.remove(VM.gun2.g);
   const s = P.s(), k = wKey(s); let e = VMC.get(k);
   if (e) VMC.delete(k); // re-inserted below: the map stays in least-recently-used order
-  else { e = { gun: buildWeapon(s.w, s.cfg), gun2: null }; if (s.w.dual) { e.gun2 = buildWeapon(W.slasher, s.cfg); e.gun2.g.scale.setScalar(.75); } }
+  else { e = { gun: buildWeapon(s.w, s.cfg), gun2: null }; if (s.w.dual) { const oh = W[s.w.offhand]; e.gun2 = buildWeapon(oh || W.slasher, s.cfg); if (!oh) e.gun2.g.scale.setScalar(.75); } /* the karambit's off-hand is the new dagger */ }
   VMC.set(k, e); if (VMC.size > 8) VMC.delete(VMC.keys().next().value);
   VM.gun = e.gun; VM.gun2 = e.gun2; VM.holder.add(VM.gun.g); if (VM.gun2) VM.holder.add(VM.gun2.g);
   if (!VM.flash) { VM.flash = new T.Sprite(new T.SpriteMaterial({ map: flashTex, blending: T.AdditiveBlending, depthWrite: false, transparent: true, toneMapped: false })); VM.flash.visible = false; vmScene.add(VM.flash); }

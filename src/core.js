@@ -14,7 +14,8 @@ const TAU = Math.PI * 2;
 const smooth01 = x => { x = x < 0 ? 0 : x > 1 ? 1 : x; return x * x * (3 - 2 * x); };
 // how much of an Augment-only set is shown: nothing below ~.1, everything at 1
 const augShare = a => Math.pow(clamp((a - .1) / .9, 0, 1), 1.5);
-const IS_TOUCH = matchMedia('(pointer:coarse)').matches || (('ontouchstart' in window) && navigator.maxTouchPoints > 0);
+// the primary pointer decides: a touchscreen laptop keeps mouse controls (it used to be treated as a phone and ignore the mouse)
+const IS_TOUCH = matchMedia('(any-pointer:fine)').matches ? matchMedia('(pointer:coarse)').matches : (matchMedia('(pointer:coarse)').matches || (('ontouchstart' in window) && navigator.maxTouchPoints > 0));
 function store(k, v) {
   try {
     if (v === undefined) { const s = localStorage.getItem('rn_' + k); return s === null ? null : JSON.parse(s); }
@@ -488,10 +489,12 @@ function addBox(x0, x1, z0, z1, y1, opt) {
   }
   return b;
 }
+// shared result, stamp-deduped (collideCircle runs ~100x a frame); callers iterate it immediately and never nest
+const _bn = []; let _bnS = 0;
 function boxesNear(x, z) {
-  const i = Math.floor(x / CELL), j = Math.floor(z / CELL); const out = [];
-  for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) { const l = grid.get(gk(i + a, j + c)); if (l) for (const b of l) if (out.indexOf(b) < 0) out.push(b); }
-  return out;
+  const i = Math.floor(x / CELL), j = Math.floor(z / CELL); _bn.length = 0; _bnS++;
+  for (let a = -1; a <= 1; a++) for (let c = -1; c <= 1; c++) { const l = grid.get(gk(i + a, j + c)); if (l) for (let k = 0; k < l.length; k++) { const b = l[k]; if (b._bn !== _bnS) { b._bn = _bnS; _bn.push(b); } } }
+  return _bn;
 }
 // push a circle out of boxes; feet y used so you can stand on low things
 function collideCircle(pos, r, feetY, h) {
@@ -520,6 +523,8 @@ function groundAt(x, z, feetY) {
 // ray vs all boxes (slab). returns {t, n}
 const _n = new T.Vector3();
 function rayBoxes(o, d, maxT) {
+  // the grid walk in ai.js gives the same answer ~200x faster (only the cells the ray crosses)
+  if (typeof rayGrid === 'function') { const h = rayGrid(o, d, maxT); return h ? { t: h.t, n: h.n.clone(), box: h.box } : null; }
   let best = maxT, bn = null, bb = null;
   for (let k = 0; k < BOX.length; k++) {
     const b = BOX[k]; if (!b.shoot) continue;
@@ -540,6 +545,7 @@ function rayBoxes(o, d, maxT) {
   return { t: best, n: _n.clone(), box: bb };
 }
 function losClear(a, b) {
+  if (typeof aiLos === 'function') return aiLos(a, b);
   const d = new T.Vector3().subVectors(b, a); const L = d.length(); d.divideScalar(L);
   const h = rayBoxes(a, d, L); if (h && h.t < L - 0.3) return false;
   if (typeof rayCar === 'function') { const c = rayCar(a, d, L - 0.3); if (c && !(P.inCar && c.car === P.inCar)) return false; }

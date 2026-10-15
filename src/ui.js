@@ -361,7 +361,7 @@ function hudUpdate(dt) {
   const scoped = s && P.ads > .92 && s.st.overlay && !P.inCar;
   setOp('scope', scoped ? 1 : 0);
   if (scoped && HUD.scopeKey !== s.id + s.cfg.retCol + s.cfg.retShape + window.innerWidth) drawScope(s);
-  if (scoped) { const sw = (P.steadyK || 1) * 6; $('scope').style.transform = `translate(${Math.sin(G.t * .9) * sw}px,${Math.sin(G.t * 1.7) * sw * .8}px)`; }
+  if (scoped) { const sw = Math.min(2, (P.steadyK || 1) * 2); /* the aim itself sways now; the ring only breathes a little */ $('scope').style.transform = `translate(${Math.sin(G.t * .9) * sw}px,${Math.sin(G.t * 1.7) * sw * .8}px)`; }
   // hit marker
   if (HUD.hitT > 0) { HUD.hitT -= dt; $('hit').style.opacity = clamp(HUD.hitT / .15, 0, 1); }
   // damage directions
@@ -455,7 +455,7 @@ function drawMini() {
   x.fillStyle = 'rgba(241,239,233,.9)'; x.font = `700 ${Math.round(9 * d)}px 'Chakra Petch', sans-serif`; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('N', H + nx * (H - 13 * d), H + ny * (H - 13 * d));
 }
 function hitMarker(kill, head) {
-  HUD.hitT = kill ? .32 : .15; const el = $('hit'); el.classList.toggle('kill', !!kill); el.style.opacity = 1; AU.hitmark(kill);
+  HUD.hitT = kill ? .32 : .15; const el = $('hit'); el.classList.toggle('kill', !!kill); el.classList.toggle('head', !!head); el.style.opacity = 1; AU.hitmark(kill);
 }
 function flashBanner(h, p, dur) { $('bannerH').textContent = h; $('bannerP').textContent = p || ''; const b = $('banner'); b.style.opacity = 1; pulse(b, 'go'); HUD.bannerT = dur || 2; }
 function feed(html) {

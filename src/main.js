@@ -2,6 +2,7 @@
    RED NIGHT — game flow + main loop
    ===================================================================== */
 const PICKS = [];
+const NO_INP = Object.freeze({ x: 0, y: 0 }), _iE = new T.Vector3(), _iF = new T.Vector3(), _iV = new T.Vector3();
 const FOGC = DIST.map(d => lc(d.fog));                 // district haze (authored as on-screen sRGB)
 const APT_FOG = lc(0x161412), IN_FOG = lc(0x141311), DAWN_FOG = lc(0x8a7672);
 const FOGD = FOGC.map(c => c.clone().multiplyScalar(.5));   // a district's haze with its grid down
@@ -58,7 +59,8 @@ function init() {
   $('loading').remove();
   requestAnimationFrame(loop);
 }
-window.onResizeHook = () => { pvSize(); postSize(); HUD.scopeKey = null; if (IS_TOUCH) show('rotate', window.innerHeight > window.innerWidth && (G.state === 'title' || G.state === 'char')); };
+AUG_HOOKS.push(() => { G.stillN = 0; }); // the dial changes the frozen frame too
+window.onResizeHook = () => { G.stillN = 0; pvSize(); postSize(); HUD.scopeKey = null; if (IS_TOUCH) show('rotate', window.innerHeight > window.innerWidth && (G.state === 'title' || G.state === 'char')); };
 
 /* ---------- starting / ending a night ---------- */
 function clearNight() {
@@ -147,7 +149,8 @@ function fmtClock(h) { const tot = 19 * 60 + Math.floor(h * 60); const hh = Math
 function endScreen(won) {
   G.state = 'end'; releaseMouse(); show('touch', false); show('hud', false); show('mEnd', true);
   $('endTitle').textContent = won ? 'YOU SURVIVED' : 'FLATLINED'; $('endTitle').style.color = won ? 'var(--volt)' : 'var(--blood)';
-  $('endEyebrow').textContent = won ? '07:00 AM · SUNRISE' : fmtClock(G.hour) + ' · ' + (G.deathCause || '');
+  $('endEyebrow').textContent = won ? '07:00 AM · SUNRISE' : fmtClock(G.hour) + (G.deathCause ? ' · ' + G.deathCause : '');
+  for (const id of ['dmg', 'poss', 'hex']) $(id).style.opacity = 0; // the hurt/possession vignettes stop updating here, so clear them
   $('endText').textContent = won ? 'The sirens wind down. The sun comes up over four cities that are pretending it never happened.' : 'Red Night keeps going without you. Wake up and try again.';
   const sv = Math.floor(G.hour); const mins = Math.floor((G.hour - sv) * 60);
   const stats = [[P.score.toLocaleString(), 'Score'], [P.kills, 'Kills'], [P.heads, 'Headshots'], [Math.round(P.longest) + 'm', 'Longest shot'], [P.exorcisms, 'Exorcisms'], [`${sv}h ${mins}m`, 'Survived']];
@@ -159,12 +162,12 @@ function endScreen(won) {
 function updateInteract() {
   if (P.dead) { setPrompt(null); return; }
   if (P.inCar) { setPrompt('Exit car', 'E'); if (took('act')) exitCar(); return; }
-  const eye = P.eye(), f = P.fwd(); let best = null, bd = 1e9;
+  const eye = _iE.copy(P.eye()), f = _iF.copy(P.fwd()); let best = null, bd = 1e9;
   for (const it of INTER) {
     if (it.apt && G.state !== 'apt') continue; if (!it.apt && G.state !== 'city') continue; if (it.when && !it.when()) continue;
-    const d = (it.car ? it.car.pos : it.p).distanceTo(it.car ? P.pos : P.pos.clone().setY(it.p.y));
+    const d = it.car ? it.car.pos.distanceTo(P.pos) : Math.hypot(it.p.x - P.pos.x, it.p.z - P.pos.z);
     if (d > it.r) continue;
-    if (it.look) { const v = it.p.clone().sub(eye).normalize(); if (v.dot(f) < .9) continue; }
+    if (it.look) { const v = _iV.copy(it.p).sub(eye).normalize(); if (v.dot(f) < .9) continue; }
     if (d < bd) { bd = d; best = it; }
   }
   if (!best && G.state === 'apt' && P.pos.z < APT.z - 1 && IS_TOUCH) best = { label: 'Open arsenal', key: 'E', act: () => { G.state = 'apt'; openLoadGridFromWall(); } };
@@ -268,7 +271,7 @@ function loop(now) {
     G.rain.visible = st === 'city' && !G.inside;
     if (st === 'city') {
       updateTraffic(dt);
-      for (const c of CARS) if (c !== P.inCar) c.update(dt, c.ai && !c.dead && c.aiInp && !G.inside ? c.aiInp : { x: 0, y: 0 });
+      for (const c of CARS) if (c !== P.inCar) c.update(dt, c.ai && !c.dead && c.aiInp && !G.inside ? c.aiInp : NO_INP);
       updateSpawns(dt);
       for (let i = ENEMIES.length - 1; i >= 0; i--) ENEMIES[i] && ENEMIES[i].update(dt);
       updateSquads(dt); updateCivs(dt); updateMolotovs(dt); updateCarDamage(dt);
@@ -302,6 +305,9 @@ function loop(now) {
   if (G.sglow) { G.sglow.uniforms.scale.value = pscale; G.sglow.uniforms.fogD.value = scene.fog.density; }
   G.vmOn = (st === 'apt' || st === 'city') && VM.root.visible && (G.camMode === 'fpp' || st === 'apt');
   if (G.cityGrp) { const o = camera.position.x > 1000; G.offGrp.visible = o; G.cityGrp.visible = !o; }
+  // paused / gunsmith: the world is frozen behind a menu, so hold the last frame instead of redrawing the city every frame
+  const still = st === 'paused' || st === 'pauseload' || st === 'smith';
+  if (!still) G.stillN = 0; else if (G.stillN > 2) { if (st === 'smith') pvRender(dt); return; } else G.stillN = (G.stillN || 0) + 1;
   if (POST.on) {
     POST.fin.uniforms.time.value = G.t; POST.fin.uniforms.hurt.value = (G.dmgFlash || 0) + (P.possT > 0 ? .6 : 0) + (P.suppressed || 0) * .22;
     POST.composer.render();

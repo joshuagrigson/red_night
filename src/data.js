@@ -602,7 +602,7 @@ function loadModel(id) {
 }
 function modelArrived(id) {
   try {
-    if (typeof VM !== 'undefined' && VM.gun && P.s() && (P.s().w.id === id || (P.s().w.dual && id === 'slasher'))) buildVM();
+    if (typeof VM !== 'undefined' && VM.gun && P.s() && (P.s().w.id === id || (P.s().w.dual && id === 'slasher'))) { buildVM(); if (typeof buildTPPWeapon === 'function' && typeof PBODY !== 'undefined' && PBODY) buildTPPWeapon(); } // the world gun too, not just the viewmodel
     const list = document.getElementById('smList');
     if (typeof SM !== 'undefined' && SM.sel === id && list && list.offsetParent) smRefresh();
   } catch (e) { }

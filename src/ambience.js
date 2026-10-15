@@ -330,8 +330,9 @@ const BARK_SYN = {
   reptile: { f: 0, d: .45, F: [2600, 5400], b: 1, a: .01, syl: 3 }, civ: { f: 0, d: .28, F: [1300, 2300], b: 1, a: .05 },
 };
 const BARK_TYPE = { purger: ['shout', 'grunt'], demon: ['demon'], vampire: ['vampire'], witch: ['witch'], reptile: ['reptile'], shifter: ['shifter'], civilian: ['civ'] };
-AMB.bark = function (pos, kind) {
-  if (!this._int) this.extBT = G.t;
+// opt.ambient: a background cue that should not stand down AMB's own alert/pain barks for 12 s
+AMB.bark = function (pos, kind, opt) {
+  if (!this._int && !(opt && opt.ambient)) this.extBT = G.t;
   if (!this.ok || !pos) return; if (BARK_TYPE[kind]) kind = pick(BARK_TYPE[kind]);
   const B = BARK_SYN[kind] || BARK_SYN.grunt, v = ambVoice(pos.x, pos.z, kind === 'demon' ? 1.1 : kind === 'mutter' ? .45 : .8, 0, false, (pos.y || 0) + 1.6, true); if (!v) return;
   try {

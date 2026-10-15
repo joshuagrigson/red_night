@@ -359,7 +359,7 @@ function resetCombat() {
     if (D.glassMesh) { D.glassMesh.material = D.glassMat; D.glassMesh.visible = true; }
     (D.hidden || []).forEach(o => o.visible = true); D.hidden = [];
     D.holes.count = 0; D.hi = 0; D.hp = D.max; D.glassGone = false; D.glassHits = 0;
-    if (c.fire) { _rmFire(c.fire); c.fire = null; } if (c.hoodFire) { _rmFire(c.hoodFire); c.hoodFire = null; } if (c.fireLS) { c.fireLS.i = 0; c.fireLS = null; }
+    if (c.fire) { _rmFire(c.fire); c.fire = null; } if (c.hoodFire) { _rmFire(c.hoodFire); c.hoodFire = null; } if (c.fireLS) { const li = LS.indexOf(c.fireLS); if (li >= 0) LS.splice(li, 1); c.fireLS = null; } // don't leave dead lights in the pool's candidate list
     c.dead = false; c.hopV = undefined; c.spin = 0; c.g.position.y = 0;
   }
   for (const k in DEC) if (DEC[k].im) { DEC[k].im.count = 0; DEC[k].i = 0; }

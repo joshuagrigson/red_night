@@ -100,6 +100,7 @@ button:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
 #hit:before,#hit:after{content:"";position:absolute;left:12px;top:-2px;width:2px;height:30px;background:#fff;transform:rotate(45deg);box-shadow:0 0 4px #000}
 #hit:after{transform:rotate(-45deg)}
 #hit.kill:before,#hit.kill:after{background:var(--blood)}
+#hit.head{transform:scale(1.35)}#hit.head:before,#hit.head:after{background:var(--volt)}#hit.head.kill:before,#hit.head.kill:after{background:var(--blood)}
 #ret{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:120px;height:120px;opacity:0}
 #prompt{position:absolute;left:50%;top:62%;transform:translateX(-50%);font-size:14px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;background:rgba(8,8,10,.72);border:1px solid var(--edge2);padding:8px 16px;opacity:0;transition:opacity .2s;white-space:nowrap;text-shadow:none}
 #prompt kbd{font-family:var(--f-mono);font-weight:400;color:#0e0d12;background:var(--volt);padding:1px 7px;margin-right:10px}
@@ -284,6 +285,10 @@ body.phHidden #photoBar{opacity:0;pointer-events:none}
 /* ---------- loading: self-contained, shown from first paint until init ---------- */
 #loading{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 125%,#2b0c12 0%,#0c0b0f 52%,#060608 100%);color:var(--ink);transition:opacity 1s ease}
 #loading.done{opacity:0;pointer-events:none}
+/* a frame of the real city behind the bar (rendered from the game: Salem at dusk under the blood moon), drifting in slowly */
+#loading:before{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(6,6,8,.35) 0%,rgba(6,6,8,.15) 40%,rgba(6,6,8,.85) 100%),url(assets/sky/hero.jpg) center/cover no-repeat;opacity:.7;animation:ldKB 28s ease-out forwards}
+#loading .ldBox{position:relative}
+@keyframes ldKB{from{transform:scale(1.08)}to{transform:scale(1)}}
 .ldBox{width:min(460px,84vw);display:flex;flex-direction:column;gap:10px}
 .ldMark{font-family:var(--f-display);font-size:clamp(44px,min(10vw,17vh),92px);line-height:.88;color:var(--ink);text-shadow:0 2px 24px rgba(0,0,0,.6)}
 .ldMark span{color:var(--blood)}
@@ -316,7 +321,7 @@ body.phHidden #photoBar{opacity:0;pointer-events:none}
 body.touch #feed{position:fixed;left:calc(14px + var(--sl));top:calc(104px + var(--st));align-items:flex-start;margin:0;gap:2px}
 body.touch #feed div{border-right:0;border-left:2px solid var(--blood);max-width:min(170px,24vw)}
 body.touch #feed div:nth-child(n+4){display:none}
-@media (prefers-reduced-motion:reduce){#feed div,#banner.go h2,#heat.rise,#heat.rise i b,#objective.new,#ldFill:after,#phFlash.go{animation:none}#fade,#loading{transition:none}}
+@media (prefers-reduced-motion:reduce){#feed div,#banner.go h2,#heat.rise,#heat.rise i b,#objective.new,#ldFill:after,#phFlash.go{animation:none}#fade,#loading{transition:none}#loading:before{animation:none}}
 </style>
 
 <canvas id="c" tabindex="0"></canvas>
@@ -364,7 +369,7 @@ body.touch #feed div:nth-child(n+4){display:none}
     <p class="lede">Four cities, one long night. The sirens just went off, and for twelve hours nobody is coming to help. Not everything out there is human. Make it to 7:00 AM.</p>
     <div class="row"><button class="btn primary" id="goChar">Wake up</button><button class="btn" id="goSet">Settings</button></div>
     <div class="opt"><b>Night length</b><button class="chip" data-n="8">8 min</button><button class="chip" data-n="14">14 min</button><button class="chip" data-n="24">24 min</button></div>
-    <div class="keys" id="keysHelp"><kbd>WASD</kbd> move · <kbd>Mouse</kbd> aim · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> aim down sights · <kbd>Shift</kbd> sprint (double-tap: tac sprint) · <kbd>Space</kbd> jump · <kbd>C</kbd> crouch / slide · <kbd>R</kbd> reload · <kbd>F</kbd> melee · <kbd>Q</kbd> swap · <kbd>3</kbd> melee weapon · <kbd>V</kbd> first / third person · <kbd>E</kbd> use / drive · <kbd>I</kbd> inspect · <kbd>Esc</kbd> pause</div>
+    <div class="keys" id="keysHelp"><kbd>WASD</kbd> move · <kbd>Mouse</kbd> aim · <kbd>LMB</kbd> fire · <kbd>RMB</kbd> aim down sights · <kbd>Shift</kbd> sprint (double-tap: tac sprint) · <kbd>Space</kbd> jump · <kbd>C</kbd> crouch / slide · <kbd>R</kbd> reload · <kbd>F</kbd> melee · <kbd>Q</kbd> swap · <kbd>3</kbd> melee weapon · <kbd>V</kbd> first / third person · <kbd>X</kbd> swap shoulder · <kbd>N</kbd> tip the net layer in / out · <kbd>E</kbd> use / drive · <kbd>I</kbd> inspect · <kbd>Esc</kbd> pause</div>
   </div>
 </div>
 

@@ -816,6 +816,7 @@ function mergeLocal(group) {
     group.add(new T.Mesh(bg, list[0].material)); list.forEach(o => group.remove(o));
   }
 }
+const _cF = new T.Vector3(), _cA = new T.Vector3(), _cB = new T.Vector3(), _cC = new T.Vector3(), _cD = new T.Vector3();
 class Car {
   constructor(x, z, h, col, glow) {
     this.g = new T.Group(); this.pos = new T.Vector3(x, 0, z); this.h = h; this.speed = 0; this.steer = 0; this.occ = false; this.hp = 1;
@@ -842,7 +843,7 @@ class Car {
     INTER.push({ car: this, p: this.pos, r: 3.2, label: 'Drive', key: 'E', act: () => { if (!this.dead) enterCar(this); }, when: () => !this.dead });
   }
   sync() { this.g.position.copy(this.pos); this.g.rotation.y = this.h; }
-  fwd() { return new T.Vector3(-Math.sin(this.h), 0, -Math.cos(this.h)); }
+  fwd(out) { return (out || new T.Vector3()).set(-Math.sin(this.h), 0, -Math.cos(this.h)); }
   update(dt, inp) {
     if (this.occ || inp.ai) {
       const thr = inp.y, st = inp.x;
@@ -854,15 +855,20 @@ class Car {
     this.speed = clamp(this.speed, -12, 42);
     const sf = clamp(Math.abs(this.speed) / 8, 0, 1) * (1 - clamp(Math.abs(this.speed) / 80, 0, .4));
     this.h -= this.steer * sf * 1.9 * dt * Math.sign(this.speed || 1);
-    const f = this.fwd(); const old = this.pos.clone();
+    if (!this.occ && !inp.ai && Math.abs(this.speed) < 1e-3) { this.speed = 0; if (this.beams.visible) this.beams.visible = false; return; } // parked and still: nothing to move, collide or re-sync
+    const f = this.fwd(_cF);
     this.pos.addScaledVector(f, this.speed * dt);
-    // two-circle collision against the city
-    const front = this.pos.clone().addScaledVector(f, 1.3), back = this.pos.clone().addScaledVector(f, -1.3);
-    const f0 = front.clone(), b0 = back.clone();
+    // two-circle collision against the city (scratch vectors: this runs for every car every frame)
+    const front = _cA.copy(this.pos).addScaledVector(f, 1.3), back = _cB.copy(this.pos).addScaledVector(f, -1.3);
+    const f0 = _cC.copy(front), b0 = _cD.copy(back);
     const hit1 = collideCircle(front, 1.15, 0, 1.4), hit2 = collideCircle(back, 1.15, 0, 1.4);
     if (hit1 || hit2) {
       const corr = front.sub(f0).add(back.sub(b0)).multiplyScalar(.5); this.pos.add(corr);
-      if (Math.abs(this.speed) > 8) { shake(Math.min(.6, Math.abs(this.speed) / 50)); AU.thud(); burst(FXA, this.pos.clone().addScaledVector(f, 2).setY(.8), 12, 6, .4, .12, .02, COL.spark, 9); }
+      if (Math.abs(this.speed) > 8) {
+        const mine = P.inCar === this, dd = this.pos.distanceTo(camera.position); // only your crash (or one right next to you) shakes you
+        if (mine || dd < 30) { shake(Math.min(.6, Math.abs(this.speed) / 50) * (mine ? 1 : 1 - dd / 30)); AU.thud(mine ? undefined : clamp((this.pos.x - camera.position.x) / 30, -1, 1)); }
+        if (dd < 90) burst(FXA, _cA.copy(this.pos).addScaledVector(f, 2).setY(.8), 12, 6, .4, .12, .02, COL.spark, 9);
+      }
       this.speed *= -.25;
     }
     for (const w of this.wheels) w.rotation.x += this.speed * dt / .36;
