@@ -29,7 +29,9 @@ cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
 - **Why the `.glb.txt` files:** the artifact host serves `.txt` but not `.glb`, so every GLB ships as base64 text. Loaders call `fetch(url + '.txt')`, then `atob`, then `GLTFLoader.parse`.
 - **Publishing:** the page is `dist/red-night.html`. Assets are published alongside it under `assets/...`.
   - A publish adds or replaces only the files it sends; it never deletes the rest.
-  - The artifact currently holds 170 files.
+  - The artifact holds 173 files (v21 added `assets/sky/clouds.jpg`, `street_env.jpg`, `hero.jpg`).
+  - The page declares the `downloads` capability: photo mode's Download goes through the viewer's save prompt (`phSave` in ui.js), because a plain download link does nothing inside the Claude app. Republish with the same declaration (omit `capabilities` to keep it).
+  - Before a republish the Artifact tool requires a full read of the live page; it is about 6,350 lines, so read it in chunks of about 450 lines.
 - **Test scripts and scratch paths:** the Python test scripts (`*.py` at the root) are headless Playwright runs using swiftshader. They write screenshots to a hard-coded scratch path (`/tmp/claude-0/...`); change `OUT=` in each.
 - **Headless speed:** the game loop runs at about 0.05× real time headless. AI tests step update functions directly, with `requestAnimationFrame` stubbed.
 
