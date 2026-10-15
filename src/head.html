@@ -21,7 +21,8 @@ button:focus-visible{outline:2px solid var(--volt);outline-offset:2px}
 
 /* ---------- FX layers ---------- */
 #fx{position:fixed;inset:0;pointer-events:none;z-index:5}
-#fx div{position:absolute;inset:0}
+#fx div,#fx canvas{position:absolute;inset:0}
+#dig{width:100%;height:100%;opacity:0}
 #vig{background:radial-gradient(ellipse at center,transparent 55%,rgba(5,0,12,.75) 100%)}
 #scan{background:repeating-linear-gradient(0deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px);mix-blend-mode:overlay}
 #dmg{background:radial-gradient(ellipse at center,transparent 40%,rgba(255,20,50,.55) 100%);opacity:0;transition:opacity .15s}
@@ -204,7 +205,7 @@ body.touch #feed div{border-right:0;border-left:2px solid var(--mag)}
 </style>
 
 <canvas id="c" tabindex="0"></canvas>
-<div id="fx"><div id="vig"></div><div id="scan"></div><div id="dmg"></div><div id="poss"></div><div id="hex"></div><div id="flash"></div><div id="fade"></div></div>
+<div id="fx"><div id="vig"></div><canvas id="dig"></canvas><div id="scan"></div><div id="dmg"></div><div id="poss"></div><div id="hex"></div><div id="flash"></div><div id="fade"></div></div>
 <div id="scope"><canvas id="scopeC"></canvas></div>
 
 <div id="hud" class="hide">
