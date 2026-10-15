@@ -497,7 +497,7 @@ function watchAI(e, dt) {
     e.wchk = .8; e.warnAim = 0;
     for (const o of ENEMIES) if (o !== e && o.postObj === e.postObj && !o.dead && o.tg && o.seesT && tgOk(e, o.tg) && hostile(e, o.tg)) { e.tg = o.tg; e.aware = true; e.awareT = G.t; e.lastSeen = G.t - 1; (e.lastKnown || (e.lastKnown = new T.Vector3())).copy(o.tg.pos); e.percT = 0; return; } // a porch fights as one
     const d = P.dead || G.inside ? 99 : P.pos.distanceTo(e.post);
-    if (d > WATCH_R && d < WATCH_WARN && aiLos(_av1.set(e.pos.x, e.pos.y + 1.6, e.pos.z), _av2.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z))) { e.warnAim = 1; watchWarn(e, false); }
+    if (d < WATCH_WARN && aiLos(_av1.set(e.pos.x, e.pos.y + 1.6, e.pos.z), _av2.set(P.pos.x, P.pos.y + P.eyeH, P.pos.z))) { e.warnAim = 1; if (d > WATCH_R) watchWarn(e, false); else e.percT = 0; } // inside the line already (round a corner, out of a door): they turn on you
   }
   if (e.warnAim) e.turnTo(P.pos.x, P.pos.z, dt, 6);
   else if (e.lookT > 0 && e.lookP) { e.lookT -= dt; e.turnTo(e.lookP.x, e.lookP.z, dt, 5); }
@@ -587,12 +587,17 @@ function lineFriend(e, TG, from, at, spread) {
   }
   return null;
 }
-// hold the burst; with the friend in front, take a step to the side away from it (one at the target has to move first)
+// the round waits for a clear line (the burst's cooldown runs on as usual, so holding never fires any faster). With the friend
+// in front, a step to the side away from it; held again straight after a step, that side was a wall, so the other one. A friend
+// at the target has to move first
 function holdLine(e, o, from, at) {
   let ux = at.x - from.x, uz = at.z - from.z; const L = Math.hypot(ux, uz) || 1; ux /= L; uz /= L;
-  const vx = o.pos.x - from.x, vz = o.pos.z - from.z, s = vx * uz - vz * ux > 0 ? -1 : 1;
-  if (vx * ux + vz * uz < L - 1.5) { e.lineX = uz * s; e.lineZ = -ux * s; e.lineT = rand(.5, .8); }
-  e.burst = 0; e.cd = Math.min(e.cd, rand(.3, .6));
+  const vx = o.pos.x - from.x, vz = o.pos.z - from.z;
+  if (vx * ux + vz * uz < L - 1.5 && !(e.lineT > 0)) {
+    const s = G.t - (e.lineHT || -9) < 1.6 ? -e.lineS : vx * uz - vz * ux > 0 ? -1 : 1;
+    e.lineS = s; e.lineHT = G.t; e.lineX = uz * s; e.lineZ = -ux * s; e.lineT = rand(.5, .8);
+  }
+  e.burst++; e.bT = rand(.2, .35);
 }
 function lineStep(e, dt) { if (!(e.lineT > 0)) return false; e.lineT -= dt; e.vel.x = damp(e.vel.x, e.lineX * 2.6, 10, dt); e.vel.z = damp(e.vel.z, e.lineZ * 2.6, 10, dt); return true; }
 // a fight down the block is a texture, not every round: distant shots share one voice slot
