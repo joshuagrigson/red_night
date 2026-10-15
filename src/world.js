@@ -305,7 +305,7 @@ function bakeStatic() {
     geos.forEach(g => { const c = g.attributes.position.count; P3.set(g.attributes.position.array, off * 3); if (g.attributes.normal) N3.set(g.attributes.normal.array, off * 3); if (g.attributes.uv) U2.set(g.attributes.uv.array, off * 2); off += c; g.dispose(); });
     const bg = new T.BufferGeometry(); bg.setAttribute('position', new T.BufferAttribute(P3, 3)); bg.setAttribute('normal', new T.BufferAttribute(N3, 3)); bg.setAttribute('uv', new T.BufferAttribute(U2, 2));
     bg.computeBoundingSphere();
-    const mesh = new T.Mesh(bg, m); mesh.renderOrder = list[0].renderOrder; scene.add(mesh);
+    const mesh = new T.Mesh(bg, m); mesh.renderOrder = list[0].renderOrder; mesh.userData.baked = 1; mesh.userData.off = bg.boundingSphere.center.x > 1000; scene.add(mesh);
     list.forEach(o => o.parent && o.parent.remove(o)); merged += list.length;
   }
   return merged;
@@ -342,7 +342,7 @@ function lamp(x, z, col) {
   addBox(x - .12, x + .12, z - .12, z + .12, 7, { noshoot: true });
   const hp = new T.Vector3(1.4, 6.8, 0).applyAxisAngle(new T.Vector3(0, 1, 0), g.rotation.y).add(g.position);
   addLS(hp.x, hp.y - .5, hp.z, col, 2.6, 20);
-  const cone = new T.Mesh(new T.ConeGeometry(2.6, 6.6, 16, 1, true), ADD(col, .03, 1));
+  const cone = new T.Mesh(new T.ConeGeometry(2.6, 6.6, 16, 1, true), ADD(col, .018, 1));
   cone.position.set(hp.x, 3.4, hp.z); scene.add(cone);
 }
 // (was also named streetProps, which city2.js's prop pass silently overrode: no lamps, parked cars or barricades were ever built)
@@ -458,10 +458,10 @@ function centerHolo() {
   };
   G.holoDraw('19:00', 'RED NIGHT · 12 HOURS');
   addLS(0, 30, 0, 0xff2a6d, 3, 40); const ls = LS[LS.length - 1];
-  const augHolo = a => { const k = smooth01((a - .08) / .5); g.visible = k > .01; ls.i = 3 * k; ringM.color.copy(lc(0xff2a6d)).multiplyScalar(k); ringC.color.copy(lc(0x05d9e8)).multiplyScalar(k); };
+  const augHolo = a => { const k = smooth01((a - .25) / .5); g.visible = k > .01; ls.i = 3 * k; ringM.color.copy(lc(0xff2a6d)).multiplyScalar(k); ringC.color.copy(lc(0x05d9e8)).multiplyScalar(k); };
   ringM = NEON(0xff2a6d).clone(); ringC = NEON(0x05d9e8).clone(); r1.material = ringM; r2.material = ringC;
   AUG_HOOKS.push(augHolo); augHolo(G.aug);
-  UPD.push((dt, tt) => { if (!g.visible) return; g.rotation.y += dt * .25; r1.rotation.x = Math.sin(tt * .5) * .6 + Math.PI / 2; r2.rotation.y = tt * .7; pl.material.opacity = (.8 + Math.sin(tt * 13) * .08 * (Math.random() < .05 ? 4 : 1)) * smooth01((G.aug - .08) / .5); });
+  UPD.push((dt, tt) => { if (!g.visible) return; g.rotation.y += dt * .25; r1.rotation.x = Math.sin(tt * .5) * .6 + Math.PI / 2; r2.rotation.y = tt * .7; pl.material.opacity = (.8 + Math.sin(tt * 13) * .08 * (Math.random() < .05 ? 4 : 1)) * smooth01((G.aug - .25) / .5); });
 }
 function billboards() {
   const ads = [
@@ -821,7 +821,7 @@ class Car {
     }
     for (const w of this.wheels) w.rotation.x += this.speed * dt / .36;
     this.wheels[0].rotation.y = this.wheels[1].rotation.y = this.steer * .45;
-    this.beams.material.opacity = this.occ ? .07 : 0;
+    this.beams.visible = this.occ; this.beams.material.opacity = this.occ ? .07 : 0; // an invisible cone still costs a draw call
     this.sync();
   }
 }

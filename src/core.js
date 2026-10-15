@@ -171,10 +171,10 @@ function makeGroundTex() {
   x.fillStyle = '#3e3c38'; x.fillRect(6 * k, 6 * k, 28 * k, 1.2 * k); x.fillRect(6 * k, 6 * k, 1.2 * k, 28 * k); x.fillRect(6 * k, 32.8 * k, 28 * k, 1.2 * k); x.fillRect(32.8 * k, 6 * k, 1.2 * k, 28 * k);
   for (let i = 8; i < 34; i += 2) { x.fillStyle = 'rgba(0,0,0,.25)'; x.fillRect(i * k, 6 * k, 1, 28 * k); x.fillRect(6 * k, i * k, 28 * k, 1); }
   // lane dashes on the road strips (centered on 0 / 40)
-  x.fillStyle = '#c9b200';
+  x.fillStyle = '#9c8a24'; // worn lane paint
   for (let i = 0; i < 40; i += 4) { x.fillRect(i * k, 0, 2 * k, 0.25 * k); x.fillRect(i * k, S - 0.25 * k, 2 * k, 0.25 * k); x.fillRect(0, i * k, 0.25 * k, 2 * k); x.fillRect(S - 0.25 * k, i * k, 0.25 * k, 2 * k); }
   // crosswalk near intersections
-  x.fillStyle = 'rgba(230,230,240,.55)';
+  x.fillStyle = 'rgba(220,218,210,.42)';
   for (let i = 0; i < 6; i++) { x.fillRect(7 * k + i * 0.9 * k, 2 * k, 0.45 * k, 3 * k); x.fillRect(2 * k, 7 * k + i * 0.9 * k, 3 * k, 0.45 * k); }
   const map = texFrom(c, true, true);
   // roughness: puddles

@@ -5,9 +5,23 @@ const PICKS = [];
 const FOGC = DIST.map(d => lc(d.fog));                 // district haze (authored as on-screen sRGB)
 const APT_FOG = lc(0x161412), IN_FOG = lc(0x141311), DAWN_FOG = lc(0x8a7672);
 
+// The apartment and interiors live off-map (x 1500-1900) and were drawn from the street whenever they fell inside the
+// far plane (the arsenal alone is 8 Tripo guns, ~240k triangles); and inside them, the whole city was still submitted.
+// Put each in its own group and show only the side the camera is on.
+function splitWorld() {
+  const city = new T.Group(), off = new T.Group(), bb = new T.Box3(), c = new T.Vector3(); city.name = 'city'; off.name = 'offmap';
+  scene.updateMatrixWorld(true);
+  for (const o of scene.children.slice()) {
+    if (o === camera || o.isLight || o.isCamera || (o.userData && o.userData.dyn)) continue;
+    if (o.isInstancedMesh || (o.userData && o.userData.baked)) { (o.userData.off ? off : city).add(o); continue; }
+    if (!(o.isGroup || o.isMesh)) continue;
+    bb.setFromObject(o); if (bb.isEmpty()) continue; bb.getCenter(c); if (c.x > 1000) off.add(o);
+  }
+  scene.add(city, off); G.cityGrp = city; G.offGrp = off; off.visible = false;
+}
 function init() {
   if (CHARS_READY) for (const id in CHARS) if (CHARS[id].scene) clipsFor(id); // bake retargets up front, not mid-fight
-  buildCity(); if (FAC.ok) buildSkyscrapers(); buildProps(); buildGrassAndMail(); trafficInit(); finishVegetation(); buildApartment(); buildInteriors(); buildStaticGlows(); G.baked = bakeStatic(); setupPost();
+  buildCity(); if (FAC.ok) buildSkyscrapers(); buildProps(); buildGrassAndMail(); trafficInit(); finishVegetation(); buildApartment(); buildInteriors(); buildStaticGlows(); G.baked = bakeStatic(); splitWorld(); setupPost();
   buildPlayerBody();
   setupMenus(); if (IS_TOUCH) setupTouch();
   G.camMode = store('cam') || 'fpp';
@@ -260,6 +274,7 @@ function loop(now) {
   FXA.pts.material.uniforms.scale.value = FXN.pts.material.uniforms.scale.value = pscale;
   if (G.sglow) { G.sglow.uniforms.scale.value = pscale; G.sglow.uniforms.fogD.value = scene.fog.density; }
   G.vmOn = (st === 'apt' || st === 'city') && VM.root.visible && (G.camMode === 'fpp' || st === 'apt');
+  if (G.cityGrp) { const o = camera.position.x > 1000; G.offGrp.visible = o; G.cityGrp.visible = !o; }
   if (POST.on) {
     POST.fin.uniforms.time.value = G.t; POST.fin.uniforms.hurt.value = (G.dmgFlash || 0) + (P.possT > 0 ? .6 : 0) + (P.suppressed || 0) * .22;
     POST.composer.render();
