@@ -1,7 +1,7 @@
 # Red Night: handoff for Claude Code
 
 **For:** Claude Code. Joshua wants the code reviewed and improved: performance, polish and bugs.
-**Live build:** https://claude.ai/artifact/7ti2u8WeK1PpiHHHTZ8bw9 (v23, 2026-10-15; v22 shipped earlier the same day as artifact version 24)
+**Live build:** https://claude.ai/artifact/7ti2u8WeK1PpiHHHTZ8bw9 (v24, artifact version 26, 2026-10-16; v23 was version 25, v22 version 24)
 **Repo:** github.com/joshuagrigson/red_night, branch `claude/inspiring-euler-4ewuw9` (v20 baseline is commit `b13e661`)
 **Source:** `red-night-source.zip`, next to this file in Downloads. It holds the code, tools, test scripts and optimized assets.
 **Raw Tripo exports:** `~/Downloads/rn_*.glb`. Re-run calibration from these.
@@ -29,7 +29,8 @@ cd dist && python3 -m http.server 8765    # open http://localhost:8765/test.html
 - **Why the `.glb.txt` files:** the artifact host serves `.txt` but not `.glb`, so every GLB ships as base64 text. Loaders call `fetch(url + '.txt')`, then `atob`, then `GLTFLoader.parse`.
 - **Publishing:** the page is `dist/red-night.html`. Assets are published alongside it under `assets/...`.
   - A publish adds or replaces only the files it sends; it never deletes the rest.
-  - The artifact holds 189 files (v21 added `assets/sky/clouds.jpg`, `street_env.jpg`, `hero.jpg`; v23 added 16: five guns, eight bodies, three city pieces). The local `dist/assets/fac/` also has Facade012–014 and `meta.json`, which nothing references and were never published.
+  - The artifact holds 227 files (v21 added `assets/sky/clouds.jpg`, `street_env.jpg`, `hero.jpg`; v23 added 16: five guns, eight bodies, three city pieces; v24 added 38: 36 sounds in `assets/sfx/` and `assets/ual_hits.glb.txt`, `assets/ual_wounded.glb.txt`, and replaced `assets/sfx/index.json`).
+  - `assets/sfx/` holds 36 older sounds (guns, foley, impacts, whizzes) that exist locally only in `dist/assets/sfx/` (tracked in git). `index.json` must list every file in that folder: build.sh now writes it from the folder, so never hand-edit it. The local `dist/assets/fac/` also has Facade012–014 and `meta.json`, which nothing references and were never published.
   - The page declares the `downloads` capability: photo mode's Download goes through the viewer's save prompt (`phSave` in ui.js), because a plain download link does nothing inside the Claude app. Republish with the same declaration (omit `capabilities` to keep it).
   - Before a republish the Artifact tool requires a full read of the live page; it is about 6,350 lines, so read it in chunks of about 450 lines.
 - **Test scripts and scratch paths:** the Python test scripts (`*.py` at the root) are headless Playwright runs using swiftshader. They write screenshots to a hard-coded scratch path (`/tmp/claude-0/...`); change `OUT=` in each.
