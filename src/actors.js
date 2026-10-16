@@ -598,7 +598,7 @@ class Enemy {
   partAt(o, d) {
     // returns {t, part, zone, side} for a ray (bodyZone), or null
     if (this.dead || (this.R && !this.R.root.visible)) return null;
-    if (this.down && this.R.glb) return this.downPart(o, d); // flat on the ground: the standing capsule would be all air
+    if ((this.down || this.flat()) && this.R.glb) return this.downPart(o, d); // flat on the ground: the standing capsule would be all air
     const sc = this.scale, hy = this.pos.y, hk = this.hH / 1.68 * this.R.root.scale.y; const hp = this.headPos(_eHP); // every ray tests every enemy: no allocation
     const th = raySphere(o, d, hp, .17 * hk);
     const tb = rayVCapsule(o, d, this.pos.x, this.pos.z, hy + .35 * hk, hy + 1.38 * hk, (this.type === 'witch' ? .45 : .3) * sc);
@@ -641,8 +641,10 @@ class Enemy {
     if (zone === 'uarm' || zone === 'larm') this.armT = G.t + .6;                       // an arm hit: the next 0.6 s of fire goes 4 deg wide
     if (this.hp <= 0 || !this.R.glb || this.down) return;
     const big = this.rAcc / this.maxHp, blast = !!(so && so.blast), sg = !!(so && so.w && so.w.cls === 'shotgun');
+    if (this.leapT > 0 || this.vanish > 0 || this.dashT > 0) return; // mid-leap, mid-blink, mid-dash: their own moves carry on
+    if (this.kRollT !== G.t) { this.kRollT = G.t; this.kRoll = Math.random(); } // one roll per blow, not per pellet
     // knocked flat by a blast nearly always, by a shotgun blast worth half your health 40 % of the time (kickback's rates); up again after
-    if (this.human && !(this.plates > 0) && G.t > (this.knockT || 0) && ((blast && Math.random() < .95) || (sg && big > .5 && Math.random() < .4)) && xReady(this.R, 'knock')) {
+    if (this.human && !(this.plates > 0) && G.t > (this.knockT || 0) && ((blast && this.kRoll < .95) || (sg && big > .5 && this.kRoll < .4)) && xReady(this.R, 'knock')) {
       this.st.pain = 'knock'; this.st.painNext = xReady(this.R, 'getup') ? 'getup' : null; this.st.painJust = true; this.knockT = G.t + 5; this.painT = G.t + 2.5; this.painEnd = G.t + 3.2; return;
     }
     // the big pain (BO1): a blow worth over 40 % of max health, not to a hand or a foot, then IW5's half-second before the next
@@ -652,11 +654,13 @@ class Enemy {
   // then 7-13 s before anyone else does it. The fall is untouchable for 0.75 s, then one more hit finishes them; left alone they
   // crawl off for 4-20 s and bleed out. Needs the crawl clips baked
   goDown(by, dir) {
-    if (this.down || !this.human || !this.R.glb || G.t < DOWNED.next || this.pos.distanceToSquared(P.pos) < 4.4 * 4.4 || !xReady(this.R, 'crawl_in') || !xReady(this.R, 'crawl_fwd')) return;
+    if (this.down || !this.human || !this.R.glb || this.plates > 0 || G.t < DOWNED.next || this.pos.distanceToSquared(P.pos) < 4.4 * 4.4 || !xReady(this.R, 'crawl_in') || !xReady(this.R, 'crawl_fwd')) return;
     DOWNED.next = G.t + rand(7, 13);
     this.down = { t: 0, inv: G.t + .75, life: rand(4, 20), by, from: (by && by.pos ? by.pos : P.pos).clone() };
+    this.tg = null; this.seesT = this.seesP = false; // out of the fight: nobody holds their line of fire for them
     this.hp = 1; this.st.pain = null; this.st.limp = null; this.st.crawl = 'crawl_in'; this.st.aimHold = false; this.burst = 0; this.hitPending = null; this.vel.set(0, 0, 0);
   }
+  flat() { const p = this.st.pain; return p === 'knock' || p === 'getup'; } // knocked down, or getting up
   // a body on the ground is hit where its bones are (refreshed once a frame): head, chest, hips, thighs, shins
   downPart(o, d) {
     if (this.dpT !== G.t) {
@@ -688,12 +692,12 @@ class Enemy {
     else if (fx) burst(FXN, c, 10, 3, .7, .11, .05, COL.blood, 9);
     const so = src && typeof src === 'object' ? src : null, zone = this.lastZone || (part === 'head' ? 'head' : 'chest'), side = (so && so.side) || 0;
     if (this.R.glb) this.st.deathClip = deathClip(this.R);
-    this.st.pain = this.st.painNext = this.st.crawl = this.st.limp = null;
-    goreDeath(this, zone, side, so, dmg || 0); // Gore On: heads and limbs (react.js)
+    const flat = this.flat(); this.st.pain = this.st.painNext = this.st.crawl = this.st.limp = null;
+    if (this.R.root.visible) goreDeath(this, zone, side, so, dmg || 0); // Gore On: heads and limbs (react.js); not on a body that burst away
     if (this.possessed) spawnWisp(this.pos.x, this.pos.z, wisp);
     // a scanned body pools where it comes to lie, two seconds on (react.js bloodPool); the box rig and the vanishing kinds splat now
     if (!this.R.glb || !this.R.root.visible) decal(new T.Vector3(this.pos.x, .02, this.pos.z), new T.Vector3(0, 1, 0), rand(1.4, 2.4), splatTex, this.type === 'reptile' ? CS(0x1a6a22) : this.type === 'demon' || this.type === 'vampire' || this.type === 'witch' ? 0x1a1a1a : BLOOD.pool);
-    else { corpseInit(this, dir, zone, side, so, dmg || 0); if (this.down) this.corpse.when = 0; } // a body on the ground goes limp at once
+    else { corpseInit(this, dir, zone, side, so, dmg || 0); if (this.down || flat) this.corpse.when = 0; } // a body on the ground goes limp at once
     this.down = null;
     this.tg = null; this.burst = 0; this.hitPending = null;
     if (by === PLY) { this.killedByP = true; onKill(this, part, src); } else npcKilled(this, by); // only your kills score, pay out and drop ammo
@@ -707,7 +711,7 @@ function painClip(R, zone, side) {
   return xReady(R, c) ? c : R.actions.hit ? 'hit' : null;
 }
 // the death clip: the library's fall, or one of the pack's deaths once they're baked (the ragdoll takes over at 35 % either way)
-function deathClip(R) { return xReady(R, 'death1') && Math.random() < .67 ? (Math.random() < .5 ? 'death1' : 'death1_m') : 'fall'; }
+function deathClip(R) { if (!xReady(R, 'death1') || Math.random() > .67) return 'fall'; return Math.random() < .5 && xReady(R, 'death1_m') ? 'death1_m' : 'death1'; }
 // a plate going: ceramic chips off the chest, a crack you hear up close
 function plateCrack(e, at) {
   if (e.unseen) return; const p = at ? _pC.copy(at) : _pC.set(e.pos.x, 1.25 * e.scale, e.pos.z);

@@ -171,8 +171,9 @@ function fleshHit(p, d, col, sys, cal, head, spray) {
   if (h) surfDecal(_fhP.copy(_fhO).addScaledVector(d, h.t), h.n, surf, rand(.25, .6) * c);
 }
 // the slap of a round going in, from where it landed: once a shot (a shotgun's first pellet speaks for the rest)
-function fleshSnd(p, head, i) {
-  if (i) return; const sp = spatial(p); if (sp.vol < .06) return;
+const FSND = { t: -1 };
+function fleshSnd(p, head) {
+  if (FSND.t === P.lastFire) return; FSND.t = P.lastFire; const sp = spatial(p); if (sp.vol < .06) return;
   AU.play(head ? 'flesh_head_1' : 'flesh_hit_' + (1 + Math.floor(Math.random() * 3)), { vol: .55 * sp.vol, pan: sp.pan, rate: rand(.9, 1.1) }) || AU.nz(.05, 'lowpass', 900, 300, 1, .14 * sp.vol, sp.pan);
 }
 function impact(p, n, surf, opts) {
@@ -259,7 +260,7 @@ function carExplode(c) {
   // blast damage
   const byP = c.lastHitBy === 'player' || (typeof PLY !== 'undefined' && c.lastHitBy === PLY), src = { big: true, w: null, dist: 0, blast: true, by: byP ? PLY : (c.lastHitBy && c.lastHitBy.pos ? c.lastHitBy : null) };
   for (const e of ENEMIES) { if (e.dead) continue; const d = e.pos.distanceTo(c.pos); if (d < 9) e.hurt(lerp(340, 20, d / 9), 'body', e.pos.clone().sub(c.pos).normalize(), src); if (d < 9) e.vel.add(e.pos.clone().sub(c.pos).setY(0).normalize().multiplyScalar(12 * (1 - d / 9))); }
-  for (const cv of CIVS) { if (cv.dead) continue; const d = cv.pos.distanceTo(c.pos); if (d < 8) cv.hurt(400, byP ? null : src.by); }
+  for (const cv of CIVS) { if (cv.dead) continue; const d = cv.pos.distanceTo(c.pos); if (d < 8) cv.hurt(400, byP ? null : src.by, { blast: true, dir: cv.pos.clone().sub(c.pos).setY(0).normalize(), zone: 'chest', side: 0, dist: d }); }
   blastCorpses(c.pos, 9, 300);
   const pd = P.pos.distanceTo(c.pos);
   if (P.inCar === c) { exitCar(); damagePlayer(90, c.pos, null); } else if (pd < 9) damagePlayer(lerp(110, 8, pd / 9), c.pos, null);

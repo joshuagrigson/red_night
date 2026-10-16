@@ -664,13 +664,13 @@ function enemyFire(e, dmg, dist, moving) {
   if (what === 3) { if (P.inCar) { carHit(P.inCar, dmg * 2, end, _efN.copy(d).negate(), false, e); damagePlayer(dmg * .5, e.pos, e); } else damagePlayer(dmg, e.pos, e); return; }
   if (what === 2) { carHit(ch.car, dmg * 2, end, ch.n, ch.glass, e); }
   else if (what === 4) { civ.hurt(dmg * 2, e); return; }
-  else if (what === 5) { if (seen && e.camD2 < 60 * 60) fleshHit(end, d, COL.blood, FXN, .8, part === 'head', hitE.camD2 < 35 * 35); hitE.hurt(dmg * zoneMul(null, zone), part, d, npcHitSrc(e, zone, side, end)); if (hitE === TG) return; }
+  else if (what === 5) { if (seen && e.camD2 < 60 * 60) fleshHit(end, d, hitE.type === 'reptile' ? COL.green : hitE.type === 'shifter' || hitE.type === 'vampire' ? COL.ichor : hitE.type === 'demon' ? COL.ember : hitE.type === 'witch' ? COL.purple : COL.blood, hitE.type === 'demon' || hitE.type === 'witch' ? FXA : FXN, .8, part === 'head', hitE.camD2 < 35 * 35); hitE.hurt(dmg * zoneMul(null, zone), part, d, npcHitSrc(e, zone, side, end)); if (hitE === TG) return; }
   else if (what === 1 && seen) { _efH.t = tHit; _efH.n = _efN; _efH.box = box; impact(end, _efN, surfOfHit(_efH, end), { size: .14, fx: e.camD2 < 70 * 70, snd: e.camD2 < 50 * 50 }); }
   // a miss on a fighter still tells them who's shooting
   if (TG !== PLY && !TG.isCiv && TG !== hitE) { tgAim(TG, _efT); const v = _efT.sub(from), tt = clamp(v.dot(d), 0, tHit); if (v.addScaledVector(d, -tt).lengthSq() < 2.4) { TG.supp = Math.min(1, (TG.supp || 0) + .25); if (TG.fac === 'looter') looterScare(TG, e.pos); else squadGrudge(TG, e, 20); } }
   // near miss: bullet crack past your head (into a wall, or on out into the night)
   const v = _efT.set(P.pos.x - from.x, P.pos.y + P.eyeH - from.y, P.pos.z - from.z); const tt = clamp(v.dot(d), 0, tHit); const miss = v.addScaledVector(d, -tt).length();
-  if (miss < 3 && !P.dead && what !== 3) {
+  if (miss < 3 && !P.dead && what !== 3 && tt > 0) { // a round that actually travels past you (from close by, one fired away clamps to the muzzle)
     const sp = spatial(e.pos), close = miss < 1, rifle = !!e.heavyGun || (e.gunId && W[e.gunId] && /ar|lmg|sniper/.test(W[e.gunId].cls));
     AU.play('whiz_' + (1 + Math.floor(Math.random() * 2)), { vol: close ? .75 : .5, pan: sp.pan }) || AU.nz(.08, 'highpass', 6000, 2500, 1, close ? .3 : .18, sp.pan);
     if (close && rifle) { AU.play('crack_' + (1 + Math.floor(Math.random() * 2)), { vol: .7, pan: sp.pan }) || AU.nz(.012, 'highpass', 9000, 6000, .6, .35, sp.pan); P.punch.x += rand(-1, 1) * .004; P.punch.y += .003; }
@@ -794,7 +794,7 @@ function fragBlast(g) {
     if (e.dead) continue; const dx = e.pos.x - p.x, dz = e.pos.z - p.z, d = Math.hypot(dx, dz); if (d > FRAG_R || !aiLos(c0, _av3.set(e.pos.x, 1, e.pos.z))) continue;
     const k = fall(d); e.hurt(15 + 200 * k, 'body', _av4.set(dx, 0, dz).normalize(), g.src); if (!e.dead && d > .1) { e.vel.x += dx / d * 8 * k; e.vel.z += dz / d * 8 * k; }
   }
-  for (const c of CIVS) { if (c.dead) continue; const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z); if (d < FRAG_R && aiLos(c0, _av3.set(c.pos.x, 1, c.pos.z))) c.hurt(20 + 160 * fall(d), g.owner); }
+  for (const c of CIVS) { if (c.dead) continue; const d = Math.hypot(c.pos.x - p.x, c.pos.z - p.z); if (d < FRAG_R && aiLos(c0, _av3.set(c.pos.x, 1, c.pos.z))) c.hurt(20 + 160 * fall(d), g.owner, { blast: true, dir: new T.Vector3(c.pos.x - p.x, 0, c.pos.z - p.z).normalize(), zone: 'chest', side: 0, dist: d }); }
   for (const c of CARS) { if (c.gone || c === P.inCar) continue; const dx = c.pos.x - p.x, dz = c.pos.z - p.z, d = Math.hypot(dx, dz); if (d < 6) carHit(c, 280 * (1 - d / 6), _av4.set(c.pos.x - dx * .4, .8, c.pos.z - dz * .4), _av5.set(-dx, 0, -dz).normalize(), false, g.owner); }
   blastCorpses(p, FRAG_R, 200);
   if (g.atP || pd < FRAG_R) HEAT.add(.25); makeNoise(p, 55, 'blast', g.owner); trafficPanic(p); // the street's own fights don't light you up
@@ -875,7 +875,7 @@ class Civ {
   // hit: a player's round, { w, dist, zone, side, dir, big } (its blood is already thrown); others leave it out
   hurt(dmg, src, hit) {
     if (this.dead) return; this.hp -= dmg; this.st.flinch = 1; if (this.scared) this.panic(this.threat); else this.panic(_av3.set(this.pos.x + rand(-3, 3), 0, this.pos.z + rand(-3, 3)));
-    if (!hit) burst(FXN, _av3.set(this.pos.x, 1.2, this.pos.z), 8, 2.5, .5, .09, .04, COL.blood, 7, .3);
+    if (!hit || hit.blast) burst(FXN, _av3.set(this.pos.x, 1.2, this.pos.z), 8, 2.5, .5, .09, .04, COL.blood, 7, .3); // a player's round threw its own blood
     else if (this.R.glb) hitSpring(this.R, Math.min(1, (dmg / this.maxHp * 100 + 50) / 250), hit.zone, hit.side, hit.dir, this.face);
     if (this.hp <= 0) {
       this.dead = true; this.deadT = 0; this.st.deathClip = this.R.glb ? deathClip(this.R) : 'fall'; this.st.crouch = 0; this.vel.set(0, 0, 0);

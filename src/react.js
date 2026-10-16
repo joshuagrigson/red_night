@@ -123,7 +123,12 @@ function flinchApply(R, dt, arms) {
 const RAG_KEEP = ['hips', 'spine', 'spine1', 'spine2', 'neck', 'head', 'leftarm', 'leftforearm', 'lefthand', 'rightarm', 'rightforearm', 'righthand', 'leftupleg', 'leftleg', 'leftfoot', 'rightupleg', 'rightleg', 'rightfoot'];
 const RAG_LEG = /upleg|leg$|foot/, RAG_HIT = { head: 'head', neck: 'neck', chest: 'spine2', belly: 'spine', uarm: 'arm', larm: 'forearm', thigh: 'upleg', shin: 'leg' };
 const RAGS = [], RAG_MAX = () => LOWMEM ? 4 : 6;
-const _rv = new T.Vector3(), _rv2 = new T.Vector3(), _rn = new T.Vector3(), _rt = new T.Vector3(), _rgq = new T.Quaternion(), _rgq2 = new T.Quaternion(), _rgm = new T.Matrix4();
+const _rv = new T.Vector3(), _rv2 = new T.Vector3(), _rn = new T.Vector3(), _rt = new T.Vector3(), _rgq = new T.Quaternion(), _rgq2 = new T.Quaternion(), _rgm = new T.Matrix4(), _rbx = new T.Vector3(), _rbz = new T.Vector3();
+// the bone each torso joint aims at (the chain), and the pair across it (shoulders, hips) that fixes its turn about that line
+const RAG_CHAIN = { hips: 'spine', spine: 'spine1', spine1: 'spine2', spine2: 'neck', neck: 'head' }, RAG_LAT = { hips: ['leftupleg', 'rightupleg'], spine2: ['leftarm', 'rightarm'] };
+const RAG_SPINE = /^(hips|spine\d?|neck|head)$/;
+// a frame from an aim line and a cross line: y along the aim, x the cross line made square to it
+function ragBasis(aim, cross, out) { _rbx.copy(cross).addScaledVector(aim, -cross.dot(aim)); if (_rbx.lengthSq() < 1e-8) return null; _rbx.normalize(); _rbz.crossVectors(_rbx, aim); return out.setFromRotationMatrix(_rgm.makeBasis(_rbx, aim, _rbz)); }
 const ragBones = R => R.ragB || (R.ragB = RAG_KEEP.map(k => findBone(R.model, k)));
 class Ragdoll {
   // o: { imp (m/s, the death impulse), zone (where the round went), last (each RAG_KEEP joint's position a frame ago), ldt (that frame's dt), pos (the body's feet) }
@@ -131,14 +136,20 @@ class Ragdoll {
     this.R = R; this.age = 0; this.asleep = false; this.frozen = false; this.still = 0; this.hits = 0; this.lastHit = -1; this.freezeT = -1; this.hitNow = false; this.cen = null;
     R.root.updateMatrixWorld(true);
     const B = ragBones(R), byBone = new Map(); this.nodes = [];
-    B.forEach((b, i) => { if (!b) return; const p = b.getWorldPosition(new T.Vector3()); const n = { b, k: RAG_KEEP[i], i, p, prev: p.clone(), rq: b.getWorldQuaternion(new T.Quaternion()), parent: null, grand: null, kids: [], pc: null, rd: null, leg: RAG_LEG.test(RAG_KEEP[i]) }; byBone.set(b, n); this.nodes.push(n); });
+    B.forEach((b, i) => { if (!b) return; const p = b.getWorldPosition(new T.Vector3()); const n = { b, k: RAG_KEEP[i], i, p, prev: p.clone(), v0: new T.Vector3(), rq: b.getWorldQuaternion(new T.Quaternion()), parent: null, grand: null, kids: [], pc: null, rd: null, lat: null, rb: null, leg: RAG_LEG.test(RAG_KEEP[i]) }; byBone.set(b, n); this.nodes.push(n); });
     if (this.nodes.length < 8) throw new Error('ragdoll: too few bones');
     for (const n of this.nodes) { let p = n.b.parent; n.mid = []; while (p && p.isBone && !byBone.has(p)) { n.mid.unshift(p); p = p.parent; } n.parent = (p && byBone.get(p)) || null; } // mid: unkept bones between it and its kept parent (a clavicle, a pelvis), top down
     for (const n of this.nodes) { n.grand = n.parent ? n.parent.parent : null; if (n.parent) n.parent.kids.push(n); }
     this.root = this.nodes.find(n => !n.parent) || this.nodes[0];
-    // the limb is the kept child with the most below it (the hips follow the spine, an arm its hand)
-    const size = n => n.kids.reduce((s, c) => s + size(c), 1);
-    for (const n of this.nodes) if (n.kids.length) { n.pc = n.kids.reduce((a, c) => size(c) > size(a) ? c : a, n.kids[0]); n.rd = n.pc.p.clone().sub(n.p).normalize(); }
+    // what each bone aims at: up the spine for the torso (the hips at the spine, the chest at the neck), otherwise the kept child with
+    // the most below it (an arm its forearm). The hips and the chest also hold their turn from the line across the legs or the arms
+    const size = n => n.kids.reduce((s, c) => s + size(c), 1), byKey = k => this.nodes.find(m => m.k === k);
+    for (const n of this.nodes) if (n.kids.length) {
+      n.pc = n.kids.find(c => c.k === RAG_CHAIN[n.k]) || (RAG_SPINE.test(n.k) && n.kids.find(c => RAG_SPINE.test(c.k))) || n.kids.reduce((a, c) => size(c) > size(a) ? c : a, n.kids[0]);
+      n.rd = n.pc.p.clone().sub(n.p).normalize();
+      const L = RAG_LAT[n.k] && RAG_LAT[n.k].map(byKey);
+      if (L && L[0] && L[1]) { const rb = ragBasis(n.rd, _rv.copy(L[1].p).sub(L[0].p), new T.Quaternion()); if (rb) { n.lat = L; n.rb = rb.invert(); } }
+    }
     this.order = []; const q = [this.root]; while (q.length) { const n = q.shift(); this.order.push(n); for (const c of n.kids) q.push(c); }
     this.sticks = [];
     for (const n of this.nodes) {
@@ -153,38 +164,40 @@ class Ragdoll {
     for (const n of this.nodes) {
       const B1 = n.parent, A = B1 && B1.parent; if (!A) continue;
       const ab = n.p.distanceTo(B1.p), bc = B1.p.distanceTo(A.p), st = ab + bc; if (st < 1e-5) continue;
-      const leg = n.leg || B1.leg || A.leg, L = { a: n, b: A, min: st * (leg ? .7 : .5), max: st * .965, rest: null, rk: leg ? .16 : .05 };
+      // the spine straightens fully; a knee or an elbow keeps a little bend at its straightest (Ragdoll.js's .965 bent every corpse ~30 deg)
+      const leg = n.leg || B1.leg || A.leg, spine = RAG_SPINE.test(n.k) && RAG_SPINE.test(B1.k) && RAG_SPINE.test(A.k), L = { a: n, b: A, min: st * (leg ? .7 : .5), max: st * (spine ? .998 : .985), rest: null, rk: leg ? .16 : .05 };
       const pa = bp.get(n.b), pb = bp.get(B1.b), pc = bp.get(A.b);
       if (pa && pb && pc) { const bst = pa.distanceTo(pb) + pb.distanceTo(pc); if (bst > 1e-6) L.rest = clamp(pa.distanceTo(pc) * st / bst, L.min, L.max); }
       this.lims.push(L);
     }
-    // the street around it: boxes within reach of a sprawl
-    this.boxes = []; const c = o.pos || this.root.p, nb = boxesNearN(c.x, c.z);
-    for (let i = 0; i < nb; i++) { const b = _bn[i]; if (b.water) continue; if (b.x1 > c.x - 2.6 && b.x0 < c.x + 2.6 && b.z1 > c.z - 2.6 && b.z0 < c.z + 2.6) this.boxes.push(b); }
-    // seed: the death clip's own motion (a frame ago), then the round
-    const dt0 = 1 / 60;
-    if (o.last && o.ldt > 1e-4) for (const n of this.nodes) { const l = o.last[n.i]; if (l) n.prev.copy(n.p).addScaledVector(_rv.copy(n.p).sub(l), -Math.min(1, dt0 / o.ldt)); }
+    this.boxes = []; this.gc = new T.Vector3(); this.gather(o.pos || this.root.p);
+    // seed velocities in m/s (each joint's v0, laid down on the first step at that step's length, so a body flies the same at any frame
+    // rate): the death clip's own motion a frame ago, then the round
+    if (o.last && o.ldt > 1e-4) for (const n of this.nodes) { const l = o.last[n.i]; if (l) { n.v0.copy(n.p).sub(l).divideScalar(o.ldt); if (n.v0.lengthSq() > 36) n.v0.setLength(6); } }
     const imp = o.imp;
     if (imp && imp.lengthSq() > 1e-6) {
       let lo = 1e9, hi = -1e9; for (const n of this.nodes) { lo = Math.min(lo, n.p.y); hi = Math.max(hi, n.p.y); }
       const span = Math.max(.2, hi - lo);
-      for (const n of this.nodes) { const h = .3 + 1.7 * (n.p.y - lo) / span; n.prev.x -= imp.x * dt0 * h; n.prev.z -= imp.z * dt0 * h; n.prev.y -= imp.y * dt0; }
+      for (const n of this.nodes) { const h = .3 + 1.7 * (n.p.y - lo) / span; n.v0.x += imp.x * h; n.v0.z += imp.z * h; n.v0.y += imp.y; }
       // the joint the round hit takes a kick of its own, its neighbours less: so no two deaths fold the same way
       const want = RAG_HIT[o.zone] || 'spine2', side = o.side > 0 ? 'right' : 'left';
       const hit = this.nodes.find(n => n.k === want || n.k === side + want) || this.nodes.find(n => n.k === 'spine2') || this.root;
-      const s = imp.length() * rand(.6, 1.1), push = (n, f) => { if (n) n.prev.addScaledVector(_rv.copy(imp).normalize().add(_rv2.set(rand(-.4, .4), rand(0, .4), rand(-.4, .4))), -dt0 * s * f); };
+      const s = imp.length() * rand(.6, 1.1), push = (n, f) => { if (n) n.v0.addScaledVector(_rv.copy(imp).normalize().add(_rv2.set(rand(-.4, .4), rand(0, .4), rand(-.4, .4))), s * f); };
       push(hit, 1); push(hit.parent, .5); push(hit.grand, .25); for (const k of hit.kids) push(k, .5);
       // and a little spin about the vertical, a different way each time
       const tw = rand(-1.6, 1.6); let cx = 0, cz = 0; for (const n of this.nodes) { cx += n.p.x; cz += n.p.z; } cx /= this.nodes.length; cz /= this.nodes.length;
-      for (const n of this.nodes) { n.prev.x -= tw * (n.p.z - cz) * dt0; n.prev.z += tw * (n.p.x - cx) * dt0; }
+      for (const n of this.nodes) { n.v0.x += tw * (n.p.z - cz); n.v0.z -= tw * (n.p.x - cx); }
     }
+    this.seeded = false; this.sub = 1 / 60;
     this.iters = LOWMEM ? 7 : 10;
   }
   // false once it has stopped for good (frozen or asleep)
   update(dt) {
     if (this.asleep || this.frozen) return false;
     this.age += dt; this.hitNow = false;
-    const sub = Math.max(1e-3, Math.min(1 / 30, dt)) / 2;
+    const sub = this.sub = Math.max(1e-3, Math.min(1 / 30, dt)) / 2;
+    if (!this.seeded) { this.seeded = true; for (const n of this.nodes) n.prev.copy(n.p).addScaledVector(n.v0, -sub); }
+    if (this.root.p.distanceToSquared(this.gc) > 2.25) this.gather(this.root.p); // thrown clear of the street it started in
     for (let s = 0; s < 2; s++) this.step(sub);
     if (this.hitNow) this.groundHit();
     if (this.freezeT >= 0 && (this.freezeT -= dt) <= 0) this.frozen = true;
@@ -197,8 +210,8 @@ class Ragdoll {
   // Verlet, then contacts once with their bounce, then the constraints relaxed with the contacts projected in among them (as
   // Jakobsen's Hitman paper does: otherwise a limb pinned against a box and the stick to its neighbour fight, and the limb stretches)
   step(dt) {
-    const g = -22 * dt * dt;
-    for (const n of this.nodes) { _rv.copy(n.p).sub(n.prev).multiplyScalar(.985); n.prev.copy(n.p); n.p.add(_rv); n.p.y += g; }
+    const g = -22 * dt * dt, drag = Math.pow(.985, dt * 60); // Ragdoll.js's drag was per 60 Hz step: the same per second at any step
+    for (const n of this.nodes) { _rv.copy(n.p).sub(n.prev).multiplyScalar(drag); n.prev.copy(n.p); n.p.add(_rv); n.p.y += g; }
     this.collide(true);
     for (let it = 0; it < this.iters; it++) {
       if (it && it % 3 === 0) this.collide(false);
@@ -239,6 +252,11 @@ class Ragdoll {
       this.freezeT = 1.6; const sp = spatial(this.root.p); if (sp.vol > .05) AU.play('body_fall_' + rint(1, 2), { vol: .7 * sp.vol, pan: sp.pan, rate: rand(.9, 1.08) }) || AU.nz(.18, 'lowpass', 500, 120, 1, .25 * sp.vol, sp.pan);
     } else if (this.isDown()) this.freezeT = Math.min(this.freezeT, .5);
   }
+  // the street's boxes within reach of a sprawl from c (re-gathered when the body travels, and on every kick)
+  gather(c) {
+    this.boxes.length = 0; this.gc.set(c.x, 0, c.z); const nb = boxesNearN(c.x, c.z);
+    for (let i = 0; i < nb; i++) { const b = _bn[i]; if (b.water) continue; if (b.x1 > c.x - 3 && b.x0 < c.x + 3 && b.z1 > c.z - 3 && b.z0 < c.z + 3) this.boxes.push(b); }
+  }
   isDown() { const ch = this.torso || (this.torso = this.nodes.find(n => n.k === 'spine2') || this.root); return ch.p.y < this.floorAt(ch.p) + .35; }
   floorAt(p) { let g = 0; for (const b of this.boxes) if (p.x >= b.x0 && p.x <= b.x1 && p.z >= b.z0 && p.z <= b.z1 && b.y1 <= p.y + .1 && b.y1 > g) g = b.y1; return g; }
   // joints back onto the bones, root to leaf: the hips take their particle's position, every bone with a limb below it turns its
@@ -251,7 +269,9 @@ class Ragdoll {
       for (const m of n.mid) m.updateWorldMatrix(false, false);
       if (n.pc) {
         _rv.copy(n.pc.p).sub(n.p); if (_rv.lengthSq() > 1e-8) {
-          _rgq.setFromUnitVectors(n.rd, _rv.normalize()).multiply(n.rq);
+          _rv.normalize();
+          if (n.lat && ragBasis(_rv, _rv2.copy(n.lat[1].p).sub(n.lat[0].p), _rgq)) _rgq.multiply(n.rb).multiply(n.rq); // aim and turn
+          else _rgq.setFromUnitVectors(n.rd, _rv).multiply(n.rq);
           if (b.parent) { b.parent.matrixWorld.decompose(_rv2, _rgq2, _rt); b.quaternion.copy(_rgq2.invert()).multiply(_rgq); } else b.quaternion.copy(_rgq);
         }
         b.updateWorldMatrix(false, false);
@@ -260,9 +280,11 @@ class Ragdoll {
   }
   // another round into a body that's already down (Black Ops 1 lets corpses take hits): wake it and kick that joint, or all of it
   kick(n, d, s) {
-    this.asleep = this.frozen = false; this.freezeT = -1; this.hits = 0; this.still = 0; this.age = Math.min(this.age, 3.5);
-    if (!n) { for (const m of this.nodes) m.prev.addScaledVector(d, -s * rand(.7, 1.2) / 60); return; }
-    n.prev.addScaledVector(d, -s / 60); if (n.parent) n.parent.prev.addScaledVector(d, -s / 120);
+    // hits stays counted: the thud and the rebound belong to the first landing only
+    this.asleep = this.frozen = false; this.freezeT = -1; this.still = 0; this.age = Math.min(this.age, 3.5); this.gather(this.root.p);
+    const k = this.seeded ? this.sub : 0; // velocity s m/s along d (before the first step, into the seed)
+    if (!n) { for (const m of this.nodes) { const f = s * rand(.7, 1.2); if (k) m.prev.addScaledVector(d, -f * k); else m.v0.addScaledVector(d, f); } return; }
+    if (k) { n.prev.addScaledVector(d, -s * k); if (n.parent) n.parent.prev.addScaledVector(d, -s * k * .5); } else { n.v0.addScaledVector(d, s); if (n.parent) n.parent.v0.addScaledVector(d, s * .5); }
   }
 }
 
@@ -289,7 +311,9 @@ function corpseUpdate(a, dt) {
     animGLB(R, a.st, dt);
     if (C.when < 0) C.when = Math.min(.9, .35 * (R.cur ? R.cur.getClip().duration : 1));
     const cd2 = a.camD2 !== undefined ? a.camD2 : a.pos.distanceToSquared(camera.position), seen = !a.unseen && cd2 < 70 * 70;
-    if (C.t >= C.when && seen && !C.noRag) ragOn(a); else { if (seen && !C.noRag) ragRecord(R, C, dt); if (C.t > C.when + 3.2) C.done = true; } // a body that never ragdolls plays its clip out
+    // the handoff only at its moment: a body first seen after it has already fallen keeps its clip (no fresh launch from the floor)
+    if (C.t >= C.when && C.t < C.when + .25 && seen && !C.noRag) ragOn(a);
+    else { if (seen && !C.noRag) ragRecord(R, C, dt); else C.last = null; if (C.t > C.when + 3.2) C.done = true; } // a body that never ragdolls plays its clip out
   }
   if (C.t > 2 && !C.pool) { C.pool = 1; bloodPool(a); }
   return true;
@@ -349,7 +373,7 @@ function bloodPool(a) {
 function updatePools(dt) {
   for (let i = POOLS.length - 1; i >= 0; i--) { const p = POOLS[i]; p.t += dt; if (p.m.userData.k !== p.k || p.t > 3) { POOLS.splice(i, 1); continue; } p.m.scale.setScalar(p.s * (.15 + .85 * smooth01(p.t / 3))); }
 }
-UPD.push(updatePools);
+UPD.push(dt => { if (G.state === 'city') updatePools(dt); });
 
 /* ---------- gore (the setting) ---------- */
 // Gore On. A big gun's headshot takes the head (v23 did this always; now it's this setting's). Black Ops 1's gib rules otherwise: a

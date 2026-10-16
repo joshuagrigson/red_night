@@ -77,7 +77,7 @@ function clearNight() {
 }
 function startNight() {
   clearNight();
-  Object.assign(P, { hp: 150, dead: false, deadT: 0, possT: 0, hexT: 0, acidT: 0, score: 0, kills: 0, heads: 0, longest: 0, exorcisms: 0, ads: 0, slide: 0, crouching: false, vel: new T.Vector3(), cur: 0, reloadT: 0, meleeT: 0, landDip: 0 });
+  Object.assign(P, { hp: 150, dead: false, deadT: 0, possT: 0, hexT: 0, acidT: 0, score: 0, kills: 0, heads: 0, longest: 0, exorcisms: 0, ads: 0, slide: 0, crouching: false, vel: new T.Vector3(), cur: 0, reloadT: 0, meleeT: 0, landDip: 0, invulT: 0, hitAcc: 0, blurT: 0 }); P.flinch.set(0, 0); P.vk.t = 9; HUD.splat = 0; G.dmgFlash = 0; // v24 hit state starts clean
   P.eyeH = 1.66;
   buildPlayerBody(); buildArms(); equipLoadout(false);
   // wake up on the bed
@@ -335,7 +335,7 @@ function loop(now) {
   const still = st === 'paused' || st === 'pauseload' || st === 'smith';
   if (!still) G.stillN = 0; else if (G.stillN > 2) { if (st === 'smith') pvRender(dt); return; } else G.stillN = (G.stillN || 0) + 1;
   if (POST.on) {
-    POST.fin.uniforms.time.value = G.t; POST.fin.uniforms.hurt.value = (G.dmgFlash || 0) + (P.possT > 0 ? .6 : 0) + (P.suppressed || 0) * .22; POST.fin.uniforms.blur.value = G.state === 'photo' ? 0 : (P.blurT || 0) / .8;
+    POST.fin.uniforms.time.value = G.t; POST.fin.uniforms.hurt.value = (G.dmgFlash || 0) + (P.possT > 0 ? .6 : 0) + (P.suppressed || 0) * .22; POST.fin.uniforms.blur.value = G.state === 'city' && !P.dead ? (P.blurT || 0) / .8 : 0;
     POST.composer.render();
   } else {
     renderer.clear(); renderer.render(scene, camera);

@@ -822,7 +822,7 @@ function aimAssist(dt) {
     AAS.t = .1; let best = null, bk = 1.25, bh = true;
     for (const e of ENEMIES) {
       if (e.dead || e.mode === 'disguise' || (e.R && !e.R.root.visible)) continue;
-      _aaC.set(e.pos.x - o.x, e.pos.y + 1.2 * e.scale - o.y, e.pos.z - o.z); const L = _aaC.length(); if (L < .5 || L > (ads ? 70 : 40)) continue;
+      _aaC.set(e.pos.x - o.x, e.pos.y + (e.down ? .3 : 1.2 * e.scale) - o.y, e.pos.z - o.z); const L = _aaC.length(); if (L < .5 || L > (ads ? 70 : 40)) continue;
       const h = aaHostile(e), k = Math.acos(clamp(_aaC.dot(f) / L, -1, 1)) / aaBubble(e, L, ads) * (h ? 1 : 1.8); // a bystander has to be right under the crosshair
       if (k < bk) { bk = k; best = e; bh = h; }
     }
@@ -830,7 +830,7 @@ function aimAssist(dt) {
   }
   const e = AAS.e; AAS.k = 0;
   if (!e || !AAS.los || e.dead) return;
-  _aaC.set(e.pos.x - o.x, e.pos.y + 1.2 * e.scale - o.y, e.pos.z - o.z); const L = _aaC.length(); _aaC.divideScalar(L);
+  _aaC.set(e.pos.x - o.x, e.pos.y + (e.down ? .3 : 1.2 * e.scale) - o.y, e.pos.z - o.z); const L = _aaC.length(); _aaC.divideScalar(L);
   const a = Math.acos(clamp(_aaC.dot(f), -1, 1)), bub = aaBubble(e, L, ads); if (a > bub * 1.25) return;
   const ty = Math.atan2(-_aaC.x, -_aaC.z), tp = Math.asin(clamp(_aaC.y, -1, 1));
   let ey = ty - P.yaw; ey = Math.atan2(Math.sin(ey), Math.cos(ey)); const ep = tp - P.pitch, cp = Math.cos(P.pitch);

@@ -389,7 +389,7 @@ function animGLB(R, st, dt, kind) {
   // v24: st.pain is a big-pain clip (a hit worth 40 % of max health, BO1) or a knockdown, st.crawl the wounded crawl, st.limp a leg
   // hit's limp; the extra clips only play once their bake is in (xAction). Every other hit is the springs (flinchApply)
   if (st.pain && R.curName === st.pain && R.cur && R.cur.time >= R.cur.getClip().duration - .02) { st.pain = st.painNext || null; st.painNext = null; st.painJust = true; }
-  if (st.death > 0) { n = st.deathClip || 'die'; fade = .12; }
+  if (st.death > 0) { n = st.deathClip || 'die'; if (!R.actions[n] && !xAction(R, n)) n = 'fall'; fade = .12; } // a pack death is made on first use
   else if (st.pain && (R.actions[st.pain] || xAction(R, st.pain))) { n = st.pain; fade = .07; }
   else if (st.crawl && xAction(R, st.crawl)) { n = st.crawl; fade = .3; }
   else if (st.attack > 0 && st.attackClip) n = st.attackClip;
