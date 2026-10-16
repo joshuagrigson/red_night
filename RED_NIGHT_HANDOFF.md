@@ -1,7 +1,7 @@
 # Red Night: handoff for Claude Code
 
 **For:** Claude Code. Joshua wants the code reviewed and improved: performance, polish and bugs.
-**Live build:** https://claude.ai/artifact/7ti2u8WeK1PpiHHHTZ8bw9 (v24, artifact version 26, 2026-10-16; v23 was version 25, v22 version 24)
+**Live build:** https://claude.ai/artifact/7ti2u8WeK1PpiHHHTZ8bw9 (v24 final, artifact version 27, 2026-10-16: version 26 was v24 before its code review; v23 was version 25, v22 version 24)
 **Repo:** github.com/joshuagrigson/red_night, branch `claude/inspiring-euler-4ewuw9` (v20 baseline is commit `b13e661`)
 **Source:** `red-night-source.zip`, next to this file in Downloads. It holds the code, tools, test scripts and optimized assets.
 **Raw Tripo exports:** `~/Downloads/rn_*.glb`. Re-run calibration from these.
@@ -52,6 +52,7 @@ Hit realism, "more Call of Duty". Every number has a source in `docs/v23-hit-rea
 - **Blood** (`fleshHit`): a mist sized to the gun (dmg/30), a puff out of the far side and a spray decal on whatever is within 2.5 m behind (`SURF.blood`). Blood colours are now converted to linear (`CS`, `BLOOD`): the old raw hex rendered hot pink.
 - **Gore setting** (Settings → Gore, `G.gore`, saved as `rn_gore`, **off by default**, Joshua's call). Off: the blood above, no head pops (v23 always popped them). On: big-gun headshots pop the head; BO1's shotgun gib odds (100 / 75 / 50 / 25 % inside 2.8 / 5.1 / 6.9 / 8.4 m), blasts of 165+ and the chainsaw take a limb (`goreDeath`).
 - **Sound** (`sfx/`, 36 CC0 samples, sources in `sfx/manifest.json`; build.sh copies them to `dist/assets/sfx/` with `index.json`): flesh hits, headshot impact, ding, ticks, kill thunk, body falls, male and female pain and death voices (`humanVox`; a headshot kill is silent, as in IW5 and BO1), breathing, near-miss cracks (an enemy round inside 1 m from a rifle; whiz inside 3 m).
+- **Review (commit 86228bf):** an adversarial review of the v24 diff confirmed 20 bugs, all fixed: the ragdoll's spine took its orientation from the left arm, and its motion depended on frame rate (now 4.0-4.3 m of travel at 30/60/144 fps); colliders went stale after big throws; death clips fell back to idle; knocked-down and crawling bodies kept the standing hitbox and their target; blur, splatter and shield leaked into the next night; the knockdown rolled once per pellet; NPC rounds made monsters bleed red. A test that checks an extra clip (knock, crawl) has to wait in real time for the background bake (`xReady`), not step the game.
 - **Tests:** `scratchpad/v24test/hits.py` and `hits2.py` (zones, multipliers, falloff, plates, pain, ragdolls, crawl, knockdown, gore, costs), `poses.py` (close-ups of bodies at rest). Measured on the desktop headless: 6 live ragdolls 0.23 ms a frame; 30 bodies flinching at once 0.4 ms on top of their animation; a pack clip bakes in 1-5 ms.
 
 ## v23: what changed
