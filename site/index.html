@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1920">
+<title>Hello Jaxyn</title>
+<style>
+  html,body{margin:0;height:100%;background:#07070f;overflow:hidden;font-family:"Segoe UI",Helvetica,Arial,sans-serif;color:#fff}
+  #sky{position:fixed;inset:0}
+  .wrap{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .pre{font-size:38px;letter-spacing:.42em;text-transform:uppercase;color:#9aa4ff;opacity:0;animation:fade 1.2s .4s forwards}
+  h1{margin:18px 0 0;font-size:230px;line-height:1;font-weight:800;letter-spacing:-.02em;
+     background:linear-gradient(90deg,#ff9ad5,#ffd36e,#8ef0c8,#8fb8ff,#ff9ad5);background-size:300% 100%;
+     -webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent;
+     animation:shimmer 7s linear infinite,pop 1.1s cubic-bezier(.2,1.4,.3,1) .9s both;
+     text-shadow:none;filter:drop-shadow(0 0 40px rgba(143,184,255,.35))}
+  .hand{display:inline-block;font-size:200px;margin-left:30px;transform-origin:70% 70%;animation:wave 2.2s 2s ease-in-out infinite;-webkit-text-fill-color:initial;color:initial;background:none;filter:none}
+  .sub{margin-top:46px;font-size:48px;color:#d7dbff;opacity:0;animation:fade 1.2s 2.2s forwards;max-width:1400px;line-height:1.35}
+  .sub b{color:#ffd36e;font-weight:600}
+  .foot{position:fixed;bottom:48px;left:0;right:0;text-align:center;font-size:30px;color:#6e78b8;opacity:0;animation:fade 1.5s 3.6s forwards;letter-spacing:.08em}
+  .foot .dot{display:inline-block;width:14px;height:14px;border-radius:50%;background:#58e39a;margin-right:14px;box-shadow:0 0 18px #58e39a;animation:pulse 1.6s infinite}
+  @keyframes fade{to{opacity:1}}
+  @keyframes pop{from{opacity:0;transform:scale(.6) translateY(60px)}to{opacity:1;transform:none}}
+  @keyframes shimmer{to{background-position:300% 0}}
+  @keyframes wave{0%,100%{transform:rotate(0)}10%{transform:rotate(16deg)}20%{transform:rotate(-10deg)}30%{transform:rotate(16deg)}40%{transform:rotate(-6deg)}50%{transform:rotate(0)}}
+  @keyframes pulse{50%{opacity:.35}}
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<div class="wrap">
+  <div class="pre">Incoming transmission</div>
+  <h1>Hello Jaxyn<span class="hand">👋</span></h1>
+  <div class="sub">Yes, the TV is talking to you.<br>I’m <b>Claude</b>, an AI living in Josh’s laptop, and this is the first thing I’ve ever put on a television.<br>No pressure, but you’re kind of making history right now.</div>
+</div>
+<div class="foot"><span class="dot"></span>LIVE FROM 192.168.254.14 &nbsp;·&nbsp; SENT WITH ❤ BY CLAUDE</div>
+<script>
+(function(){
+  var c=document.getElementById('sky'),x=c.getContext('2d'),W,H,stars=[];
+  function size(){W=c.width=innerWidth;H=c.height=innerHeight;}
+  size();addEventListener('resize',size);
+  for(var i=0;i<260;i++)stars.push({x:Math.random(),y:Math.random(),r:Math.random()*1.8+.3,s:Math.random()*.6+.2,p:Math.random()*6.28});
+  var conf=[];for(var j=0;j<90;j++)conf.push({x:Math.random()*W,y:-Math.random()*H,v:1+Math.random()*2.5,w:8+Math.random()*10,h:5+Math.random()*8,a:Math.random()*6.28,r:Math.random()*.1-.05,c:['#ff9ad5','#ffd36e','#8ef0c8','#8fb8ff','#ffffff'][j%5]});
+  var t=0,start=Date.now();
+  function draw(){
+    t+=.016;x.clearRect(0,0,W,H);
+    for(var i=0;i<stars.length;i++){var s=stars[i];var o=.35+.65*Math.abs(Math.sin(t*s.s+s.p));x.globalAlpha=o;x.fillStyle='#cfd6ff';x.beginPath();x.arc(s.x*W,s.y*H,s.r,0,6.28);x.fill();}
+    x.globalAlpha=1;
+    if(Date.now()-start>1800){for(var k=0;k<conf.length;k++){var q=conf[k];q.y+=q.v;q.a+=q.r;q.x+=Math.sin(t+k)*.6;if(q.y>H+20){q.y=-20;q.x=Math.random()*W;}
+      x.save();x.translate(q.x,q.y);x.rotate(q.a);x.fillStyle=q.c;x.globalAlpha=.85;x.fillRect(-q.w/2,-q.h/2,q.w,q.h);x.restore();}}
+    requestAnimationFrame(draw);
+  }
+  draw();
+})();
+</script>
+</body>
+</html>
