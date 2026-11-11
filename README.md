@@ -1,4 +1,4 @@
-# Grigson TV for Android
+# Clicker for Android
 
 Download: [TV-Remote.apk](https://github.com/joshuagrigson/red_night/raw/tv-remote-app/TV-Remote.apk)
 
